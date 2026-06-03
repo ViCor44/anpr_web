@@ -41,7 +41,7 @@ for p in [DATA_DIR, SNAP_DIR]:
 
 # ===================== OPCIONAL GPIO =====================
 try:
-    import RPi.GPIO as GPIO
+    import RPi.GPIO as GPIO  # type: ignore
     GPIO_AVAILABLE = True
 except (ImportError, RuntimeError):
     GPIO_AVAILABLE = False
@@ -51,8 +51,7 @@ ANPR_ENABLED = True
 try:
     import numpy as np
     from ultralytics import YOLO
-    from fast_plate_ocr import LicensePlateRecognizer
-    from open_image_models import LicensePlateDetector
+    from fast_plate_ocr import LicensePlateRecognizer  # type: ignore
 except Exception as e:
     print(f"[WARN] ANPR libs não disponíveis: {e}")
     ANPR_ENABLED = False
@@ -65,6 +64,7 @@ OCR_MODEL       = "global-plates-mobile-vit-v2-model"
 YOLO_IMGSZ      = 320
 DETECTAR_CADA_N = 5
 ANPR_COOLDOWN_S = 10
+ANPR_MIN_CONF_SAVE = 0.95
 
 REGEX_MATRICULA = re.compile(
     r"^("
@@ -448,7 +448,10 @@ class ANPREngine:
             plate, conf, plate_crop = self._recognize(frame)
             if not plate:
                 return
-
+            if conf < ANPR_MIN_CONF_SAVE:
+                print(f"[ANPR] ignorado {plate} (conf {conf:.2f} < {ANPR_MIN_CONF_SAVE})")
+                return
+            
             agora = time.time()
             if self.ultima_matricula == plate and (agora - self.ultimo_tempo) < ANPR_COOLDOWN_S:
                 return
