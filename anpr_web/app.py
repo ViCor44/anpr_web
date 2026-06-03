@@ -41,7 +41,7 @@ for p in [DATA_DIR, SNAP_DIR]:
 
 # ===================== OPCIONAL GPIO =====================
 try:
-    import RPi.GPIO as GPIO  # type: ignore
+    import RPi.GPIO as GPIO
     GPIO_AVAILABLE = True
 except (ImportError, RuntimeError):
     GPIO_AVAILABLE = False
@@ -51,7 +51,8 @@ ANPR_ENABLED = True
 try:
     import numpy as np
     from ultralytics import YOLO
-    from fast_plate_ocr import LicensePlateRecognizer  # type: ignore
+    from fast_plate_ocr import LicensePlateRecognizer
+    from open_image_models import LicensePlateDetector
 except Exception as e:
     print(f"[WARN] ANPR libs não disponíveis: {e}")
     ANPR_ENABLED = False
