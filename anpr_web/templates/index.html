@@ -24,7 +24,7 @@
       <div class="muted" id="camera-ip">Câmara: --</div>
     </div>
     <div class="top-actions">
-      <button id="reload-plates-btn" class="secondary">Recarregar matrí­culas</button>
+      <a class="secondary linkbtn" href="/plates">Gerir matrículas</a>
       <a class="secondary linkbtn" href="/logout">Sair</a>
     </div>
   </header>
@@ -62,22 +62,7 @@
         </div>
         <button id="open-gate-btn" class="danger">Abrir portão</button>
         <div class="muted top-space" id="manual-result">Nenhuma acção manual ainda.</div>
-      </div>
-      <div class="card">
-        <div class="card-header">
-          <h2>Matrículas autorizadas</h2>
-          <span class="muted" id="plates-count">--</span>
-        </div>
-
-        <form id="plate-form" class="plate-form">
-          <input type="text" id="plate-input" placeholder="Ex: AA00AA" maxlength="12" required>
-          <input type="text" id="label-input" placeholder="Dono / nota (opcional)">
-          <button type="submit">Adicionar</button>
-        </form>
-        <div class="muted" id="plate-msg" style="margin-top:8px"></div>
-
-        <div id="plates-list" style="margin-top:12px"></div>
-      </div>
+      </div>      
       <div class="card">
         <div class="card-header">
           <h2>Ultimos eventos</h2>

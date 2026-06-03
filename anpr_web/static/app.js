@@ -100,8 +100,7 @@ document.getElementById("reload-plates-btn")?.addEventListener("click", reloadPl
 async function tick() {
   try {
     await refreshStatus();
-    await refreshEvents();
-    await loadPlates();
+    await refreshEvents();    
   } catch (e) {
     console.error(e);
   }
@@ -170,8 +169,6 @@ document.getElementById("plate-form")?.addEventListener("submit", async (ev) => 
     msg.textContent = "Erro: " + e.message;
   }
 });
-
-loadPlates();
 
 tick();
 setInterval(tick, 3000);

@@ -547,6 +547,11 @@ def index():
 def history():
     return render_template("history.html")
 
+@app.route("/plates")
+@login_required
+def plates_page():
+    return render_template("plates.html")
+
 @app.route("/api/events/all")
 @login_required
 def api_events_all():
