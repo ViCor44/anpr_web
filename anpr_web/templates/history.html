@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Histórico — ANPR VIGI</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Histórico de eventos</h1>
+      <div class="muted">Todos os snapshots e leituras</div>
+    </div>
+    <div class="top-actions">
+      <a class="linkbtn secondary" href="/">← Voltar</a>
+      <a class="linkbtn secondary" href="/logout">Sair</a>
+    </div>
+  </header>
+
+  <main style="padding:20px">
+    <div class="card">
+      <div class="card-header">
+        <h2>Eventos</h2>
+        <div class="muted" id="counter">A carregar…</div>
+      </div>
+      <div id="events"></div>
+    </div>
+  </main>
+
+  <!-- Lightbox simples -->
+  <div id="lightbox" onclick="this.style.display='none'"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
+              z-index:9999;align-items:center;justify-content:center;cursor:zoom-out">
+    <img id="lightbox-img" style="max-width:95vw;max-height:95vh;border-radius:8px">
+  </div>
+
+  <script>
+    function fmtConfidence(v){ return v==null ? "--" : `${Math.round(v*100)}%`; }
+    function eventTitle(ev){
+      if(ev.event_type==="manual_open") return "Abertura manual";
+      if(ev.event_type==="anpr_authorized") return "ANPR autorizado";
+      if(ev.event_type==="anpr_denied") return "ANPR negado";
+      return ev.event_type;
+    }
+    function eventClass(ev){
+      if(ev.event_type==="manual_open") return "warn";
+      if(ev.authorized===1) return "ok";
+      if(ev.authorized===0) return "bad";
+      return "";
+    }
+    function openLightbox(src){
+      document.getElementById("lightbox-img").src = src;
+      document.getElementById("lightbox").style.display = "flex";
+    }
+
+    async function load(){
+      const r = await fetch("/api/events/all?limit=500");
+      const events = await r.json();
+      document.getElementById("counter").textContent = `${events.length} eventos`;
+      const el = document.getElementById("events");
+      el.innerHTML = "";
+      for(const ev of events){
+        const row = document.createElement("div");
+        row.className = "event";
+        const img = ev.snapshot_path
+          ? `<img src="/${ev.snapshot_path}" alt="snapshot" style="cursor:zoom-in" onclick="openLightbox('/${ev.snapshot_path}')">`
+          : `<div style="width:96px;height:72px;background:#000;border-radius:8px"></div>`;
+        row.innerHTML = `
+          ${img}
+          <div>
+            <div class="event-title ${eventClass(ev)}">${eventTitle(ev)}</div>
+            <div class="muted">${ev.ts}</div>
+            ${ev.plate ? `<div>Matrícula: <strong>${ev.plate}</strong></div>` : ""}
+            ${ev.confidence!=null ? `<div>Confiança: ${fmtConfidence(ev.confidence)}</div>` : ""}
+            ${ev.client_ip ? `<div>IP origem: ${ev.client_ip}</div>` : ""}
+            ${ev.note ? `<div class="muted">${ev.note}</div>` : ""}
+          </div>
+        `;
+        el.appendChild(row);
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

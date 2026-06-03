@@ -1,0 +1,9 @@
+flask
+opencv-python
+ultralytics
+fast-plate-ocr
+open-image-models
+onnxruntime
+numpy
+pillow
+rpi-lgpio
