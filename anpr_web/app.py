@@ -67,7 +67,6 @@ DETECTAR_CADA_N = 5
 ANPR_COOLDOWN_S = 10
 ANPR_MIN_CONF_SAVE = 0.95
 RELE_COOLDOWN_S = 180
-JANELA_SNAPSHOT_POS_ABERTURA_S = 8
 
 REGEX_MATRICULA = re.compile(
     r"^("
@@ -328,10 +327,7 @@ class ANPREngine:
         self.last_boxes = []
         self.ultimo_tempo = 0
         self.ultima_matricula = None
-        self.ultima_matricula_snapshot = None
         self.ultimo_rele_ts = 0
-        self.janela_snapshot_pos_abertura_ate = 0
-        self.snapshot_pos_abertura_feito = False
 
         if not self.enabled:
             print("[ANPR] desativado")
@@ -453,42 +449,19 @@ class ANPREngine:
                 return
 
             plate, conf, plate_crop = self._recognize(frame)
-            agora = time.time()
-
             if not plate:
-                if (
-                    agora <= self.janela_snapshot_pos_abertura_ate
-                    and not self.snapshot_pos_abertura_feito
-                ):
-                    snap = save_snapshot(frame, "anpr_following_vehicle")
-                    add_event(
-                        event_type="anpr_following_vehicle",
-                        confidence=None,
-                        authorized=None,
-                        snapshot_path=snap,
-                        note="Veiculo sem matricula legivel apos abertura autorizada"
-                    )
-                    self.snapshot_pos_abertura_feito = True
                 return
             if conf < ANPR_MIN_CONF_SAVE:
                 print(f"[ANPR] ignorado {plate} (conf {conf:.2f} < {ANPR_MIN_CONF_SAVE})")
                 return
+
+            agora = time.time()
 
             if self.ultima_matricula == plate and (agora - self.ultimo_tempo) < ANPR_COOLDOWN_S:
                 return
 
             self.ultima_matricula = plate
             self.ultimo_tempo = agora
-
-            # Evita snapshots/eventos repetidos da mesma matricula ate surgir uma diferente.
-            if self.ultima_matricula_snapshot == plate:
-                anpr_latest.update({
-                    "plate": plate,
-                    "confidence": conf,
-                    "authorized": plate in valid_plates,
-                    "ts": now_iso()
-                })
-                return
 
             authorized = plate in valid_plates
             snap = save_snapshot(frame, "anpr")
@@ -500,13 +473,9 @@ class ANPREngine:
                     open_gate()
                     self.ultimo_rele_ts = agora
                     relay_acionado = True
-                    self.janela_snapshot_pos_abertura_ate = agora + JANELA_SNAPSHOT_POS_ABERTURA_S
-                    self.snapshot_pos_abertura_feito = False
                 else:
                     restante = int(RELE_COOLDOWN_S - (agora - self.ultimo_rele_ts))
                     note = f"Reconhecimento ANPR (rele em cooldown, faltam {max(0, restante)}s)"
-
-            self.ultima_matricula_snapshot = plate
 
             add_event(
                 event_type="anpr_authorized" if authorized else "anpr_denied",
