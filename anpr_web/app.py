@@ -34,7 +34,9 @@ BASE_DIR = Path.home() / "anpr_web"
 DATA_DIR = BASE_DIR / "data"
 SNAP_DIR = DATA_DIR / "snapshots"
 DB_PATH  = DATA_DIR / "events.db"
+EVENTS_LOG_PATH = DATA_DIR / "events.log"
 VALIDAS_PATH = Path.home() / "matriculas_validas.txt"
+MAX_EVENTS_HISTORY = 500
 
 for p in [DATA_DIR, SNAP_DIR]:
     p.mkdir(parents=True, exist_ok=True)
@@ -141,21 +143,48 @@ def init_db():
 
 def add_event(event_type, plate=None, confidence=None, authorized=None,
               client_ip_value=None, user_agent=None, snapshot_path=None, note=None):
+    event_record = {
+        "ts": now_iso(),
+        "event_type": event_type,
+        "plate": plate,
+        "confidence": confidence,
+        "authorized": None if authorized is None else (1 if authorized else 0),
+        "client_ip": client_ip_value,
+        "user_agent": user_agent,
+        "snapshot_path": snapshot_path,
+        "note": note,
+    }
+
+    # Mantem um log completo (append-only), independente da rotacao da BD.
+    try:
+        with EVENTS_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(event_record) + "\n")
+    except Exception as e:
+        print(f"[events.log] erro ao gravar: {e}")
+
     conn = db()
     conn.execute("""
         INSERT INTO events (ts, event_type, plate, confidence, authorized, client_ip, user_agent, snapshot_path, note)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        now_iso(),
-        event_type,
-        plate,
-        confidence,
-        None if authorized is None else (1 if authorized else 0),
-        client_ip_value,
-        user_agent,
-        snapshot_path,
-        note
+        event_record["ts"],
+        event_record["event_type"],
+        event_record["plate"],
+        event_record["confidence"],
+        event_record["authorized"],
+        event_record["client_ip"],
+        event_record["user_agent"],
+        event_record["snapshot_path"],
+        event_record["note"]
     ))
+    conn.execute("""
+        DELETE FROM events
+        WHERE id NOT IN (
+            SELECT id FROM events
+            ORDER BY id DESC
+            LIMIT ?
+        )
+    """, (MAX_EVENTS_HISTORY,))
     conn.commit()
     conn.close()
 
