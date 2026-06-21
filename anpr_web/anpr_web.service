@@ -1,0 +1,17 @@
+[Unit]
+Description=ANPR Web Application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=desenvolvimento
+WorkingDirectory=/home/desenvolvimento/anpr_web
+ExecStart=/home/desenvolvimento/anpr_venv/bin/python app.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
