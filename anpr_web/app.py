@@ -89,6 +89,10 @@ def now_iso():
     return datetime.now().isoformat(timespec="seconds")
 
 
+def normalize_plate(value):
+    return re.sub(r"[^A-Z0-9]", "", str(value).upper())
+
+
 def client_ip():
     xff = request.headers.get("X-Forwarded-For", "")
     if xff:
@@ -206,7 +210,7 @@ def load_valid_plates():
     if VALIDAS_PATH.exists():
         for line in VALIDAS_PATH.read_text(encoding="utf-8").splitlines():
             if line.strip() and not line.startswith("#"):
-                plates.add(line.strip().upper().replace("-", "").replace(" ", ""))
+                plates.add(normalize_plate(line))
     else:
         VALIDAS_PATH.write_text("# uma matricula por linha\n", encoding="utf-8")
     # 2) Base de dados
@@ -215,7 +219,7 @@ def load_valid_plates():
         rows = conn.execute("SELECT plate FROM plates WHERE active=1").fetchall()
         conn.close()
         for r in rows:
-            plates.add(r["plate"].upper().replace("-", "").replace(" ", ""))
+            plates.add(normalize_plate(r["plate"]))
     except Exception as e:
         print(f"[plates] erro: {e}")
     return plates
@@ -354,8 +358,7 @@ class ANPREngine:
         self.processando = False
         self.frame_count = 0
         self.last_boxes = []
-        self.ultimo_tempo = 0
-        self.ultima_matricula = None
+        self.ultimo_snapshot_por_matricula = {}
         self.ultimo_rele_ts = 0
 
         if not self.enabled:
@@ -485,14 +488,14 @@ class ANPREngine:
                 return
 
             agora = time.time()
+            plate_key = normalize_plate(plate)
 
-            if self.ultima_matricula == plate and (agora - self.ultimo_tempo) < ANPR_COOLDOWN_S:
+            if (agora - self.ultimo_snapshot_por_matricula.get(plate_key, 0)) < ANPR_COOLDOWN_S:
                 return
 
-            self.ultima_matricula = plate
-            self.ultimo_tempo = agora
+            self.ultimo_snapshot_por_matricula[plate_key] = agora
 
-            authorized = plate in valid_plates
+            authorized = plate_key in valid_plates
             snap = save_snapshot(frame, "anpr")
 
             relay_acionado = False
