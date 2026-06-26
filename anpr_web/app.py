@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import Flask, Response, render_template, request, jsonify, redirect, url_for, session
@@ -153,6 +153,19 @@ def init_db():
             active INTEGER NOT NULL DEFAULT 1
         )
     """)
+    # Migracao: novas colunas opcionais (validade, horario, dias, creditos).
+    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(plates)").fetchall()}
+    additions = [
+        ("expires_at", "TEXT"),
+        ("time_start", "TEXT"),
+        ("time_end", "TEXT"),
+        ("days_mask", "INTEGER"),
+        ("max_uses", "INTEGER"),
+        ("uses_count", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    for name, ddl in additions:
+        if name not in existing_cols:
+            conn.execute(f"ALTER TABLE plates ADD COLUMN {name} {ddl}")
     conn.commit()
     conn.close()
 
@@ -215,7 +228,24 @@ def list_events(limit=20):
     return [dict(r) for r in rows]
 
 
+def purge_expired_plates():
+    """Apaga matriculas cuja validade ja terminou ou cujos creditos esgotaram."""
+    try:
+        conn = db()
+        now = now_iso()
+        # Por data de expiracao
+        conn.execute("DELETE FROM plates WHERE expires_at IS NOT NULL AND expires_at <= ?", (now,))
+        # Por creditos esgotados
+        conn.execute("DELETE FROM plates WHERE max_uses IS NOT NULL AND uses_count >= max_uses")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[plates purge] erro: {e}")
+
+
 def load_valid_plates():
+    """Retorna o conjunto de matriculas registadas (ativas), apos limpar expiradas."""
+    purge_expired_plates()
     plates = set()
     # 1) Ficheiro de texto (compat)
     if VALIDAS_PATH.exists():
@@ -234,6 +264,89 @@ def load_valid_plates():
     except Exception as e:
         print(f"[plates] erro: {e}")
     return plates
+
+
+def _time_in_window(now_hm, start_hm, end_hm):
+    """Verifica se HH:MM esta dentro da janela. Suporta passagem por meia-noite."""
+    if not start_hm or not end_hm:
+        return True
+    if start_hm <= end_hm:
+        return start_hm <= now_hm <= end_hm
+    # janela que atravessa a meia-noite (ex: 22:00 - 06:00)
+    return now_hm >= start_hm or now_hm <= end_hm
+
+
+def check_plate_authorization(plate_key):
+    """
+    Verifica se a matricula esta autorizada a abrir o portao neste momento.
+    Retorna (registered: bool, authorized: bool, reason: str|None).
+    Efeitos colaterais:
+      - Apaga matricula se expirou por data.
+      - Incrementa contador de uso quando autoriza; apaga ao esgotar creditos.
+    """
+    plate_key = normalize_plate(plate_key)
+    if not plate_key:
+        return False, False, "vazia"
+
+    # 1) Compat: ficheiro de texto - sempre autoriza sem restricoes
+    if VALIDAS_PATH.exists():
+        for line in VALIDAS_PATH.read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#") and normalize_plate(line) == plate_key:
+                return True, True, None
+
+    conn = db()
+    row = conn.execute("SELECT * FROM plates WHERE plate=?", (plate_key,)).fetchone()
+    if not row:
+        conn.close()
+        return False, False, "nao registada"
+
+    row = dict(row)
+    now = datetime.now()
+    now_iso_str = now.isoformat(timespec="seconds")
+
+    # Expirada por data -> apaga e bloqueia
+    if row.get("expires_at") and row["expires_at"] <= now_iso_str:
+        conn.execute("DELETE FROM plates WHERE id=?", (row["id"],))
+        conn.commit()
+        conn.close()
+        return False, False, "expirada"
+
+    if not row.get("active"):
+        conn.close()
+        return True, False, "inativa"
+
+    # Dia da semana (bit 0 = Segunda ... bit 6 = Domingo)
+    days_mask = row.get("days_mask")
+    if days_mask is not None and days_mask != 0:
+        weekday = now.weekday()
+        if not (int(days_mask) & (1 << weekday)):
+            conn.close()
+            return True, False, "dia nao permitido"
+
+    # Janela horaria
+    now_hm = now.strftime("%H:%M")
+    if not _time_in_window(now_hm, row.get("time_start"), row.get("time_end")):
+        conn.close()
+        return True, False, "fora de horario"
+
+    # Creditos
+    max_uses = row.get("max_uses")
+    uses_count = int(row.get("uses_count") or 0)
+    if max_uses is not None and uses_count >= int(max_uses):
+        conn.execute("DELETE FROM plates WHERE id=?", (row["id"],))
+        conn.commit()
+        conn.close()
+        return False, False, "creditos esgotados"
+
+    # Autorizado: incrementa contador; se atingir o limite, apaga.
+    new_count = uses_count + 1
+    if max_uses is not None and new_count >= int(max_uses):
+        conn.execute("DELETE FROM plates WHERE id=?", (row["id"],))
+    else:
+        conn.execute("UPDATE plates SET uses_count=? WHERE id=?", (new_count, row["id"]))
+    conn.commit()
+    conn.close()
+    return True, True, None
 
 class GPIOController:
     def __init__(self, pin, ativo_baixo=True):
@@ -505,11 +618,11 @@ class ANPREngine:
 
             agora = time.time()
             plate_key = normalize_plate(plate)
-            authorized = plate_key in valid_plates
             plate_in_eu_format = is_european_plate_format(plate_key)
+            registered, authorized, reason = check_plate_authorization(plate_key)
 
-            if not plate_in_eu_format and not authorized:
-                print(f"[ANPR] ignorado {plate_key} (personalizada nao autorizada)")
+            if not plate_in_eu_format and not registered:
+                print(f"[ANPR] ignorado {plate_key} (personalizada nao registada)")
                 return
 
             if (agora - self.ultimo_snapshot_por_matricula.get(plate_key, 0)) < ANPR_PLATE_RECHECK_S:
@@ -520,8 +633,11 @@ class ANPREngine:
 
             relay_acionado = False
             note = "Reconhecimento ANPR"
-            if not plate_in_eu_format and authorized:
+            if registered and not authorized and reason:
+                note = f"Reconhecimento ANPR (bloqueado: {reason})"
+            elif not plate_in_eu_format and authorized:
                 note = "Reconhecimento ANPR (matricula personalizada autorizada)"
+
             if authorized:
                 if (agora - self.ultimo_rele_ts) >= RELE_COOLDOWN_S:
                     open_gate()
@@ -682,16 +798,69 @@ def api_open_gate():
 
     return jsonify({"ok": True, "client_ip": ip, "snapshot": snap})
 
+def _parse_days(value):
+    """Aceita lista de inteiros 0..6 (Mon..Sun) ou int bitmask. Retorna bitmask ou None."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, int):
+        return value & 127
+    if isinstance(value, list):
+        mask = 0
+        for d in value:
+            try:
+                di = int(d)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= di <= 6:
+                mask |= (1 << di)
+        return mask if mask else None
+    return None
+
+
+def _parse_hhmm(value):
+    if not value:
+        return None
+    s = str(value).strip()
+    if re.match(r"^\d{1,2}:\d{2}$", s):
+        h, m = s.split(":")
+        return f"{int(h):02d}:{int(m):02d}"
+    return None
+
+
+def _compute_expires_at(days_valid, explicit):
+    if explicit:
+        return str(explicit).strip()
+    try:
+        n = int(days_valid)
+        if n > 0:
+            return (datetime.now() + timedelta(days=n)).isoformat(timespec="seconds")
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def _plate_row_dict(row):
+    d = dict(row)
+    if d.get("days_mask") is not None:
+        m = int(d["days_mask"])
+        d["days"] = [i for i in range(7) if m & (1 << i)]
+    else:
+        d["days"] = None
+    return d
+
+
 @app.route("/api/plates", methods=["GET"])
 @login_required
 def api_plates_list():
+    purge_expired_plates()
     conn = db()
     rows = conn.execute("""
-        SELECT id, plate, label, added_at, added_by_ip, active
+        SELECT id, plate, label, added_at, added_by_ip, active,
+               expires_at, time_start, time_end, days_mask, max_uses, uses_count
         FROM plates ORDER BY id DESC
     """).fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([_plate_row_dict(r) for r in rows])
 
 
 @app.route("/api/plates", methods=["POST"])
@@ -699,39 +868,138 @@ def api_plates_list():
 def api_plates_add():
     global valid_plates
     data = request.get_json(silent=True) or request.form
-    raw = (data.get("plate") or "").upper()
-    plate = re.sub(r"[^A-Z0-9]", "", raw)
-    label = (data.get("label") or "").strip()
 
-    if len(plate) < 4 or len(plate) > 9:
-        return jsonify({"ok": False, "error": "Matricula invalida"}), 400
+    # Aceita 'plate' (string) ou 'plates' (string com varias linhas / lista).
+    raw_plates = data.get("plates")
+    if raw_plates is None:
+        raw_plates = data.get("plate", "")
+
+    if isinstance(raw_plates, list):
+        candidates = raw_plates
+    else:
+        candidates = re.split(r"[\s,;]+", str(raw_plates))
+
+    cleaned = []
+    for c in candidates:
+        p = re.sub(r"[^A-Z0-9]", "", str(c).upper())
+        if 4 <= len(p) <= 9:
+            cleaned.append(p)
+    cleaned = list(dict.fromkeys(cleaned))  # preserva ordem, remove duplicados
+
+    if not cleaned:
+        return jsonify({"ok": False, "error": "Nenhuma matricula valida"}), 400
+
+    label = (data.get("label") or "").strip() or None
+    expires_at = _compute_expires_at(data.get("days_valid"), data.get("expires_at"))
+    time_start = _parse_hhmm(data.get("time_start"))
+    time_end = _parse_hhmm(data.get("time_end"))
+    days_mask = _parse_days(data.get("days"))
+    try:
+        max_uses = int(data.get("max_uses")) if data.get("max_uses") not in (None, "", 0, "0") else None
+        if max_uses is not None and max_uses <= 0:
+            max_uses = None
+    except (TypeError, ValueError):
+        max_uses = None
 
     ip = client_ip()
     ua = request.headers.get("User-Agent", "")
 
+    added = []
+    skipped = []
     conn = db()
-    try:
-        conn.execute("""
-            INSERT INTO plates (plate, label, added_at, added_by_ip, added_by_ua, active)
-            VALUES (?, ?, ?, ?, ?, 1)
-        """, (plate, label or None, now_iso(), ip, ua))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        return jsonify({"ok": False, "error": "Matricula ja existe"}), 409
+    for plate in cleaned:
+        try:
+            conn.execute("""
+                INSERT INTO plates (plate, label, added_at, added_by_ip, added_by_ua, active,
+                                    expires_at, time_start, time_end, days_mask, max_uses, uses_count)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 0)
+            """, (plate, label, now_iso(), ip, ua,
+                  expires_at, time_start, time_end, days_mask, max_uses))
+            added.append(plate)
+        except sqlite3.IntegrityError:
+            skipped.append(plate)
+    conn.commit()
     conn.close()
 
     valid_plates = load_valid_plates()
 
-    add_event(
-        event_type="plate_added",
-        plate=plate,
-        authorized=True,
-        client_ip_value=ip,
-        user_agent=ua,
-        note=f"Matricula adicionada{(' - ' + label) if label else ''}"
-    )
-    return jsonify({"ok": True, "plate": plate})
+    if added:
+        add_event(
+            event_type="plate_added",
+            plate=", ".join(added),
+            authorized=True,
+            client_ip_value=ip,
+            user_agent=ua,
+            note=f"Matriculas adicionadas ({len(added)}){(' - ' + label) if label else ''}"
+        )
+
+    return jsonify({"ok": True, "added": added, "skipped": skipped})
+
+
+@app.route("/api/plates/<int:pid>", methods=["PATCH"])
+@login_required
+def api_plates_update(pid):
+    global valid_plates
+    data = request.get_json(silent=True) or {}
+
+    conn = db()
+    row = conn.execute("SELECT * FROM plates WHERE id=?", (pid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "error": "Nao encontrada"}), 404
+
+    fields = []
+    values = []
+
+    if "label" in data:
+        fields.append("label=?")
+        values.append((data.get("label") or "").strip() or None)
+
+    if "active" in data:
+        fields.append("active=?")
+        values.append(1 if bool(data["active"]) else 0)
+
+    if "expires_at" in data or "days_valid" in data:
+        fields.append("expires_at=?")
+        values.append(_compute_expires_at(data.get("days_valid"), data.get("expires_at")))
+
+    if "time_start" in data:
+        fields.append("time_start=?")
+        values.append(_parse_hhmm(data.get("time_start")))
+
+    if "time_end" in data:
+        fields.append("time_end=?")
+        values.append(_parse_hhmm(data.get("time_end")))
+
+    if "days" in data:
+        fields.append("days_mask=?")
+        values.append(_parse_days(data.get("days")))
+
+    if "max_uses" in data:
+        try:
+            mv = int(data["max_uses"]) if data["max_uses"] not in (None, "", 0, "0") else None
+            if mv is not None and mv <= 0:
+                mv = None
+        except (TypeError, ValueError):
+            mv = None
+        fields.append("max_uses=?")
+        values.append(mv)
+
+    if "reset_uses" in data and data["reset_uses"]:
+        fields.append("uses_count=?")
+        values.append(0)
+
+    if not fields:
+        conn.close()
+        return jsonify({"ok": False, "error": "Nada para atualizar"}), 400
+
+    values.append(pid)
+    conn.execute(f"UPDATE plates SET {', '.join(fields)} WHERE id=?", values)
+    conn.commit()
+    conn.close()
+
+    valid_plates = load_valid_plates()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/plates/<int:pid>", methods=["DELETE"])

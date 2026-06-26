@@ -5,6 +5,59 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Matrículas — ANPR VIGI</title>
   <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .form-grid .full{grid-column:1 / -1}
+    .form-grid label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+    .form-grid input, .form-grid textarea, .form-grid select{
+      width:100%;padding:10px;border-radius:8px;
+      border:1px solid var(--border);background:#0d1016;color:#fff;
+      font-family:inherit;
+    }
+    .form-grid textarea{min-height:90px;font-family:Consolas,monospace;text-transform:uppercase}
+    .days-row{display:flex;gap:6px;flex-wrap:wrap}
+    .days-row label{
+      display:inline-flex;align-items:center;gap:4px;
+      padding:6px 10px;border:1px solid var(--border);border-radius:8px;
+      cursor:pointer;background:#0d1016;font-size:13px;color:var(--text);
+    }
+    .days-row input[type=checkbox]{accent-color:var(--btn)}
+    .plate-card{
+      border-top:1px solid var(--border);padding:14px 0;
+      display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;
+    }
+    .plate-card:first-child{border-top:none;padding-top:0}
+    .plate-card .plate{font-weight:700;font-family:Consolas,monospace;font-size:18px}
+    .plate-card .meta{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5}
+    .plate-card .actions{display:flex;flex-direction:column;gap:6px;align-items:end}
+    .plate-card .actions button{
+      padding:6px 10px;font-size:13px;min-width:90px;
+    }
+    .badge-inactive{
+      background:rgba(245,158,11,.15);color:var(--warn);
+      border:1px solid rgba(245,158,11,.3);
+      padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px;
+    }
+    .badge-expired{
+      background:rgba(239,68,68,.15);color:var(--bad);
+      border:1px solid rgba(239,68,68,.3);
+      padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px;
+    }
+    .edit-panel{
+      grid-column:1 / -1;border-top:1px dashed var(--border);
+      margin-top:10px;padding-top:10px;display:none;
+    }
+    .edit-panel.open{display:block}
+    .edit-panel .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+    .edit-panel input,.edit-panel select{
+      padding:8px;border-radius:6px;border:1px solid var(--border);
+      background:#0d1016;color:#fff;width:100%;
+    }
+    @media(max-width:700px){
+      .form-grid{grid-template-columns:1fr}
+      .edit-panel .row{grid-template-columns:1fr}
+    }
+  </style>
 </head>
 <body>
   <header class="topbar">
@@ -21,14 +74,60 @@
   <main style="padding:20px;max-width:900px;margin:0 auto">
     <div class="card">
       <div class="card-header">
-        <h2>Adicionar matrícula</h2>
+        <h2>Adicionar matrículas</h2>
       </div>
-      <form id="plate-form" class="plate-form">
-        <input type="text" id="plate-input" placeholder="Ex: 6659NHG" maxlength="12" required>
-        <input type="text" id="label-input" placeholder="Dono / nota (opcional)">
-        <button type="submit">Adicionar</button>
+      <form id="plate-form">
+        <div class="form-grid">
+          <div class="full">
+            <label>Matrículas (uma por linha — podes colar várias)</label>
+            <textarea id="plates-input" placeholder="AA00AA&#10;6659NHG&#10;..." required></textarea>
+          </div>
+
+          <div class="full">
+            <label>Dono / nota (opcional)</label>
+            <input type="text" id="label-input" placeholder="Ex: Visitante João">
+          </div>
+
+          <div>
+            <label>Validade (dias)</label>
+            <input type="number" id="days-valid-input" min="0" step="1" placeholder="vazio = sem fim">
+          </div>
+
+          <div>
+            <label>Máx. aberturas</label>
+            <input type="number" id="max-uses-input" min="0" step="1" placeholder="vazio = ilimitado">
+          </div>
+
+          <div>
+            <label>Hora início</label>
+            <input type="time" id="time-start-input">
+          </div>
+
+          <div>
+            <label>Hora fim</label>
+            <input type="time" id="time-end-input">
+          </div>
+
+          <div class="full">
+            <label>Dias da semana permitidos</label>
+            <div class="days-row" id="days-row">
+              <label><input type="checkbox" value="0" checked> Seg</label>
+              <label><input type="checkbox" value="1" checked> Ter</label>
+              <label><input type="checkbox" value="2" checked> Qua</label>
+              <label><input type="checkbox" value="3" checked> Qui</label>
+              <label><input type="checkbox" value="4" checked> Sex</label>
+              <label><input type="checkbox" value="5" checked> Sáb</label>
+              <label><input type="checkbox" value="6" checked> Dom</label>
+            </div>
+          </div>
+
+          <div class="full" style="display:flex;gap:10px;align-items:center">
+            <button type="submit">Adicionar</button>
+            <button type="button" class="secondary" id="reset-btn">Limpar</button>
+            <div class="muted" id="plate-msg" style="flex:1"></div>
+          </div>
+        </div>
       </form>
-      <div class="muted" id="plate-msg" style="margin-top:8px"></div>
     </div>
 
     <div class="card" style="margin-top:20px">
@@ -40,15 +139,48 @@
   </main>
 
   <script>
+    const DAY_NAMES = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+
     async function getJSON(url, opts={}){
       const r = await fetch(url, opts);
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
+      const data = await r.json().catch(()=>({}));
+      if(!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      return data;
+    }
+
+    function fmtDate(s){
+      if(!s) return "";
+      return s.replace("T"," ").slice(0,16);
+    }
+
+    function daysToText(days){
+      if(!days || days.length === 0) return "todos";
+      if(days.length === 7) return "todos";
+      return days.map(d=>DAY_NAMES[d]).join(", ");
+    }
+
+    function getSelectedDays(){
+      const checks = document.querySelectorAll("#days-row input[type=checkbox]");
+      const days = [];
+      checks.forEach(c => { if(c.checked) days.push(parseInt(c.value,10)); });
+      return days.length === 7 ? null : days; // null = todos
+    }
+
+    function clearForm(){
+      document.getElementById("plates-input").value = "";
+      document.getElementById("label-input").value = "";
+      document.getElementById("days-valid-input").value = "";
+      document.getElementById("max-uses-input").value = "";
+      document.getElementById("time-start-input").value = "";
+      document.getElementById("time-end-input").value = "";
+      document.querySelectorAll("#days-row input[type=checkbox]").forEach(c=>c.checked=true);
+      document.getElementById("plate-msg").textContent = "";
     }
 
     async function loadPlates(){
       const plates = await getJSON("/api/plates");
-      document.getElementById("plates-count").textContent = `${plates.length} ativas`;
+      document.getElementById("plates-count").textContent =
+        `${plates.length} matrícula${plates.length===1?"":"s"}`;
       const el = document.getElementById("plates-list");
       el.innerHTML = "";
       if(plates.length === 0){
@@ -56,48 +188,159 @@
         return;
       }
       for(const p of plates){
-        const row = document.createElement("div");
-        row.className = "plate-row";
-        row.innerHTML = `
-          <div class="info">
-            <div class="plate">${p.plate}</div>
-            <div class="muted">
-              ${p.label ? p.label + " · " : ""}
-              adicionada ${p.added_at}${p.added_by_ip ? " · IP " + p.added_by_ip : ""}
+        const inactive = !p.active;
+        const meta = [];
+        if(p.label) meta.push(p.label);
+        if(p.expires_at) meta.push(`válida até ${fmtDate(p.expires_at)}`);
+        if(p.time_start && p.time_end) meta.push(`horário ${p.time_start}–${p.time_end}`);
+        meta.push(`dias: ${daysToText(p.days)}`);
+        if(p.max_uses != null) meta.push(`usos ${p.uses_count||0}/${p.max_uses}`);
+        meta.push(`adicionada ${fmtDate(p.added_at)}`);
+
+        const card = document.createElement("div");
+        card.className = "plate-card";
+        card.innerHTML = `
+          <div>
+            <div>
+              <span class="plate">${p.plate}</span>
+              ${inactive ? '<span class="badge-inactive">inativa</span>' : ''}
+            </div>
+            <div class="meta">${meta.join(" · ")}</div>
+          </div>
+          <div class="actions">
+            <button class="secondary" data-act="toggle">${inactive?"Ativar":"Desativar"}</button>
+            <button class="secondary" data-act="edit">Editar</button>
+            <button data-act="remove" style="background:transparent;color:var(--bad);border:1px solid var(--bad)">Remover</button>
+          </div>
+          <div class="edit-panel">
+            <div class="row">
+              <div>
+                <label class="muted" style="font-size:12px">Nota</label>
+                <input type="text" data-f="label" value="${p.label||''}">
+              </div>
+              <div>
+                <label class="muted" style="font-size:12px">Validade (dias a partir de agora)</label>
+                <input type="number" data-f="days_valid" min="0" placeholder="(manter)">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label class="muted" style="font-size:12px">Hora início</label>
+                <input type="time" data-f="time_start" value="${p.time_start||''}">
+              </div>
+              <div>
+                <label class="muted" style="font-size:12px">Hora fim</label>
+                <input type="time" data-f="time_end" value="${p.time_end||''}">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label class="muted" style="font-size:12px">Máx. aberturas</label>
+                <input type="number" data-f="max_uses" min="0" value="${p.max_uses||''}">
+              </div>
+              <div>
+                <label class="muted" style="font-size:12px">Reiniciar contador?</label>
+                <select data-f="reset_uses">
+                  <option value="0">Não</option>
+                  <option value="1">Sim</option>
+                </select>
+              </div>
+            </div>
+            <div class="days-row" data-f="days">
+              ${[0,1,2,3,4,5,6].map(d=>{
+                const checked = !p.days || p.days.includes(d);
+                return `<label><input type="checkbox" value="${d}" ${checked?"checked":""}> ${DAY_NAMES[d]}</label>`;
+              }).join("")}
+            </div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <button data-act="save">Guardar</button>
+              <button class="secondary" data-act="cancel">Cancelar</button>
             </div>
           </div>
-          <button data-id="${p.id}" data-plate="${p.plate}">Remover</button>
         `;
-        row.querySelector("button").addEventListener("click", async (ev)=>{
-          const id = ev.target.dataset.id;
-          const plate = ev.target.dataset.plate;
-          if(!confirm(`Remover ${plate}?`)) return;
+
+        card.querySelector('[data-act="remove"]').addEventListener("click", async ()=>{
+          if(!confirm(`Remover ${p.plate}?`)) return;
           try{
-            await getJSON(`/api/plates/${id}`, { method:"DELETE" });
+            await getJSON(`/api/plates/${p.id}`, { method:"DELETE" });
             await loadPlates();
           }catch(e){ alert("Erro: "+e.message); }
         });
-        el.appendChild(row);
+
+        card.querySelector('[data-act="toggle"]').addEventListener("click", async ()=>{
+          try{
+            await getJSON(`/api/plates/${p.id}`, {
+              method:"PATCH",
+              headers:{ "Content-Type":"application/json" },
+              body: JSON.stringify({ active: inactive })
+            });
+            await loadPlates();
+          }catch(e){ alert("Erro: "+e.message); }
+        });
+
+        const panel = card.querySelector(".edit-panel");
+        card.querySelector('[data-act="edit"]').addEventListener("click", ()=>{
+          panel.classList.toggle("open");
+        });
+        card.querySelector('[data-act="cancel"]').addEventListener("click", ()=>{
+          panel.classList.remove("open");
+        });
+        card.querySelector('[data-act="save"]').addEventListener("click", async ()=>{
+          const body = {};
+          body.label = panel.querySelector('[data-f="label"]').value;
+          const dv = panel.querySelector('[data-f="days_valid"]').value;
+          if(dv !== "") body.days_valid = parseInt(dv,10);
+          body.time_start = panel.querySelector('[data-f="time_start"]').value;
+          body.time_end = panel.querySelector('[data-f="time_end"]').value;
+          const mu = panel.querySelector('[data-f="max_uses"]').value;
+          body.max_uses = mu === "" ? null : parseInt(mu,10);
+          if(panel.querySelector('[data-f="reset_uses"]').value === "1") body.reset_uses = true;
+          const dayChecks = panel.querySelectorAll('[data-f="days"] input[type=checkbox]');
+          const days = [];
+          dayChecks.forEach(c => { if(c.checked) days.push(parseInt(c.value,10)); });
+          body.days = days.length === 7 ? null : days;
+
+          try{
+            await getJSON(`/api/plates/${p.id}`, {
+              method:"PATCH",
+              headers:{ "Content-Type":"application/json" },
+              body: JSON.stringify(body)
+            });
+            await loadPlates();
+          }catch(e){ alert("Erro: "+e.message); }
+        });
+
+        el.appendChild(card);
       }
     }
 
+    document.getElementById("reset-btn").addEventListener("click", clearForm);
+
     document.getElementById("plate-form").addEventListener("submit", async (ev)=>{
       ev.preventDefault();
-      const plate = document.getElementById("plate-input").value;
-      const label = document.getElementById("label-input").value;
       const msg = document.getElementById("plate-msg");
       msg.textContent = "A adicionar...";
+
+      const body = {
+        plates: document.getElementById("plates-input").value,
+        label: document.getElementById("label-input").value,
+        days_valid: document.getElementById("days-valid-input").value,
+        max_uses: document.getElementById("max-uses-input").value,
+        time_start: document.getElementById("time-start-input").value,
+        time_end: document.getElementById("time-end-input").value,
+        days: getSelectedDays(),
+      };
+
       try{
-        const r = await fetch("/api/plates", {
+        const data = await getJSON("/api/plates", {
           method:"POST",
           headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ plate, label }),
+          body: JSON.stringify(body),
         });
-        const data = await r.json();
-        if(!r.ok) throw new Error(data.error || "erro");
-        msg.textContent = `Adicionada: ${data.plate}`;
-        document.getElementById("plate-input").value = "";
-        document.getElementById("label-input").value = "";
+        let txt = `Adicionadas: ${data.added.length}`;
+        if(data.skipped && data.skipped.length) txt += ` · já existiam: ${data.skipped.join(", ")}`;
+        msg.textContent = txt;
+        clearForm();
         await loadPlates();
       }catch(e){
         msg.textContent = "Erro: "+e.message;
