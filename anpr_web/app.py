@@ -66,7 +66,8 @@ CONF_PLATE      = 0.25
 OCR_MODEL       = "global-plates-mobile-vit-v2-model"
 YOLO_IMGSZ      = 320
 DETECTAR_CADA_N = 5
-ANPR_COOLDOWN_S = 10
+ANPR_CHECK_INTERVAL_S = 10
+ANPR_PLATE_RECHECK_S = 300
 ANPR_MIN_CONF_SAVE = 0.95
 RELE_COOLDOWN_S = 180
 
@@ -80,6 +81,10 @@ REGEX_MATRICULA = re.compile(
     r")$"
 )
 
+REGEX_MATRICULA_EUROPA_GENERICO = re.compile(
+    r"^(?=.{5,10}$)(?=.*[A-Z])(?=.*\d)[A-Z0-9]+$"
+)
+
 # ===================== APP =====================
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -91,6 +96,12 @@ def now_iso():
 
 def normalize_plate(value):
     return re.sub(r"[^A-Z0-9]", "", str(value).upper())
+
+
+def is_european_plate_format(plate):
+    p = normalize_plate(plate)
+    # Mantem os formatos conhecidos e aceita o padrao europeu generico.
+    return bool(REGEX_MATRICULA.match(p) or REGEX_MATRICULA_EUROPA_GENERICO.match(p))
 
 
 def client_ip():
@@ -360,6 +371,7 @@ class ANPREngine:
         self.last_boxes = []
         self.ultimo_snapshot_por_matricula = {}
         self.ultimo_rele_ts = 0
+        self.ultimo_check_ts = 0
 
         if not self.enabled:
             print("[ANPR] desativado")
@@ -466,7 +478,7 @@ class ANPREngine:
         candidatos.sort(key=lambda x: x[1], reverse=True)
 
         for txt, c in candidatos:
-            if REGEX_MATRICULA.match(txt):
+            if is_european_plate_format(txt):
                 return txt, c, best_crop
         if candidatos:
             return candidatos[0][0], candidatos[0][1], best_crop
@@ -489,17 +501,23 @@ class ANPREngine:
 
             agora = time.time()
             plate_key = normalize_plate(plate)
+            authorized = plate_key in valid_plates
+            plate_in_eu_format = is_european_plate_format(plate_key)
 
-            if (agora - self.ultimo_snapshot_por_matricula.get(plate_key, 0)) < ANPR_COOLDOWN_S:
+            if not plate_in_eu_format and not authorized:
+                print(f"[ANPR] ignorado {plate_key} (personalizada nao autorizada)")
+                return
+
+            if (agora - self.ultimo_snapshot_por_matricula.get(plate_key, 0)) < ANPR_PLATE_RECHECK_S:
                 return
 
             self.ultimo_snapshot_por_matricula[plate_key] = agora
-
-            authorized = plate_key in valid_plates
             snap = save_snapshot(frame, "anpr")
 
             relay_acionado = False
             note = "Reconhecimento ANPR"
+            if not plate_in_eu_format and authorized:
+                note = "Reconhecimento ANPR (matricula personalizada autorizada)"
             if authorized:
                 if (agora - self.ultimo_rele_ts) >= RELE_COOLDOWN_S:
                     open_gate()
@@ -549,10 +567,16 @@ class ANPREngine:
                     time.sleep(0.01)
                     continue
 
+                agora = time.time()
+                if (agora - self.ultimo_check_ts) < ANPR_CHECK_INTERVAL_S:
+                    time.sleep(0.05)
+                    continue
+
                 res = self.model_vehicle(frame, imgsz=YOLO_IMGSZ, conf=CONF_VEHICLE, verbose=False)[0]
                 veiculo = any(int(box.cls[0]) in VEHICLE_CLASSES for box in res.boxes)
 
                 if veiculo and not self.processando:
+                    self.ultimo_check_ts = agora
                     self.processando = True
                     threading.Thread(target=self._processar, daemon=True).start()
 
