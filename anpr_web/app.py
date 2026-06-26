@@ -27,7 +27,7 @@ RTSP_SUB  = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}/stream2"
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
 
 RELE_PIN         = 17
-RELE_ATIVO_BAIXO = True
+RELE_ATIVO_BAIXO = False
 TEMPO_RELE_SEG   = 2.0
 
 BASE_DIR = Path.home() / "anpr_web"
