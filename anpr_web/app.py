@@ -162,6 +162,7 @@ def init_db():
         ("days_mask", "INTEGER"),
         ("max_uses", "INTEGER"),
         ("uses_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("is_external_bus", "INTEGER NOT NULL DEFAULT 0"),
     ]
     for name, ddl in additions:
         if name not in existing_cols:
@@ -856,7 +857,8 @@ def api_plates_list():
     conn = db()
     rows = conn.execute("""
         SELECT id, plate, label, added_at, added_by_ip, active,
-               expires_at, time_start, time_end, days_mask, max_uses, uses_count
+               expires_at, time_start, time_end, days_mask, max_uses, uses_count,
+               is_external_bus
         FROM plates ORDER BY id DESC
     """).fetchall()
     conn.close()
@@ -894,12 +896,17 @@ def api_plates_add():
     time_start = _parse_hhmm(data.get("time_start"))
     time_end = _parse_hhmm(data.get("time_end"))
     days_mask = _parse_days(data.get("days"))
+    is_external_bus = 1 if bool(data.get("is_external_bus")) else 0
     try:
         max_uses = int(data.get("max_uses")) if data.get("max_uses") not in (None, "", 0, "0") else None
         if max_uses is not None and max_uses <= 0:
             max_uses = None
     except (TypeError, ValueError):
         max_uses = None
+
+    # Autocarro externo: forca abertura unica.
+    if is_external_bus:
+        max_uses = 1
 
     ip = client_ip()
     ua = request.headers.get("User-Agent", "")
@@ -911,10 +918,11 @@ def api_plates_add():
         try:
             conn.execute("""
                 INSERT INTO plates (plate, label, added_at, added_by_ip, added_by_ua, active,
-                                    expires_at, time_start, time_end, days_mask, max_uses, uses_count)
-                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 0)
+                                    expires_at, time_start, time_end, days_mask, max_uses, uses_count,
+                                    is_external_bus)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 0, ?)
             """, (plate, label, now_iso(), ip, ua,
-                  expires_at, time_start, time_end, days_mask, max_uses))
+                  expires_at, time_start, time_end, days_mask, max_uses, is_external_bus))
             added.append(plate)
         except sqlite3.IntegrityError:
             skipped.append(plate)
@@ -984,6 +992,15 @@ def api_plates_update(pid):
             mv = None
         fields.append("max_uses=?")
         values.append(mv)
+
+    if "is_external_bus" in data:
+        ext = 1 if bool(data["is_external_bus"]) else 0
+        fields.append("is_external_bus=?")
+        values.append(ext)
+        if ext:
+            # Garante abertura unica.
+            fields.append("max_uses=?")
+            values.append(1)
 
     if "reset_uses" in data and data["reset_uses"]:
         fields.append("uses_count=?")

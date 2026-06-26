@@ -43,6 +43,11 @@
       border:1px solid rgba(239,68,68,.3);
       padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px;
     }
+    .badge-bus{
+      background:rgba(37,99,235,.15);color:#93c5fd;
+      border:1px solid rgba(37,99,235,.35);
+      padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px;
+    }
     .edit-panel{
       grid-column:1 / -1;border-top:1px dashed var(--border);
       margin-top:10px;padding-top:10px;display:none;
@@ -121,6 +126,13 @@
             </div>
           </div>
 
+          <div class="full">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="is-external-bus-input">
+              <span>Autocarro externo (abertura única — apaga após usar)</span>
+            </label>
+          </div>
+
           <div class="full" style="display:flex;gap:10px;align-items:center">
             <button type="submit">Adicionar</button>
             <button type="button" class="secondary" id="reset-btn">Limpar</button>
@@ -173,6 +185,7 @@
       document.getElementById("max-uses-input").value = "";
       document.getElementById("time-start-input").value = "";
       document.getElementById("time-end-input").value = "";
+      document.getElementById("is-external-bus-input").checked = false;
       document.querySelectorAll("#days-row input[type=checkbox]").forEach(c=>c.checked=true);
       document.getElementById("plate-msg").textContent = "";
     }
@@ -203,6 +216,7 @@
           <div>
             <div>
               <span class="plate">${p.plate}</span>
+              ${p.is_external_bus ? '<span class="badge-bus">autocarro externo</span>' : ''}
               ${inactive ? '<span class="badge-inactive">inativa</span>' : ''}
             </div>
             <div class="meta">${meta.join(" · ")}</div>
@@ -329,6 +343,7 @@
         time_start: document.getElementById("time-start-input").value,
         time_end: document.getElementById("time-end-input").value,
         days: getSelectedDays(),
+        is_external_bus: document.getElementById("is-external-bus-input").checked,
       };
 
       try{
