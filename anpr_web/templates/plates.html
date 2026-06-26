@@ -126,13 +126,6 @@
             </div>
           </div>
 
-          <div class="full">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-              <input type="checkbox" id="is-external-bus-input">
-              <span>Autocarro externo (abertura única — apaga após usar)</span>
-            </label>
-          </div>
-
           <div class="full" style="display:flex;gap:10px;align-items:center">
             <button type="submit">Adicionar</button>
             <button type="button" class="secondary" id="reset-btn">Limpar</button>
@@ -185,7 +178,6 @@
       document.getElementById("max-uses-input").value = "";
       document.getElementById("time-start-input").value = "";
       document.getElementById("time-end-input").value = "";
-      document.getElementById("is-external-bus-input").checked = false;
       document.querySelectorAll("#days-row input[type=checkbox]").forEach(c=>c.checked=true);
       document.getElementById("plate-msg").textContent = "";
     }
@@ -343,7 +335,6 @@
         time_start: document.getElementById("time-start-input").value,
         time_end: document.getElementById("time-end-input").value,
         days: getSelectedDays(),
-        is_external_bus: document.getElementById("is-external-bus-input").checked,
       };
 
       try{

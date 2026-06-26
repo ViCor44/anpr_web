@@ -61,6 +61,7 @@
           <h2>Controlo</h2>
         </div>
         <button id="open-gate-btn" class="danger">Abrir portão</button>
+        <button id="external-bus-btn" class="secondary" style="width:100%;margin-top:10px">Autocarro externo (abertura única)</button>
         <div class="muted top-space" id="manual-result">Nenhuma acção manual ainda.</div>
       </div>      
       <div class="card">
@@ -72,6 +73,28 @@
       </div>
     </section>
   </main>
+
+  <div id="bus-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h2 style="margin-top:0">Autocarro externo</h2>
+      <p class="muted" style="margin-top:0">
+        A matrícula é autorizada para <strong>uma única abertura</strong> e apagada automaticamente após passar.
+      </p>
+      <form id="bus-form">
+        <label class="muted" style="font-size:13px">Matrícula</label>
+        <input type="text" id="bus-plate-input" placeholder="Ex: AA00AA" maxlength="12" required
+               style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border);background:#0d1016;color:#fff;text-transform:uppercase;font-family:Consolas,monospace;font-size:18px;margin-top:6px">
+        <label class="muted" style="font-size:13px;margin-top:10px;display:block">Nota (opcional)</label>
+        <input type="text" id="bus-label-input" placeholder="Ex: Excursão XPTO"
+               style="width:100%;padding:10px;border-radius:10px;border:1px solid var(--border);background:#0d1016;color:#fff;margin-top:6px">
+        <div class="muted" id="bus-msg" style="min-height:18px;margin-top:10px"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button type="submit">Adicionar</button>
+          <button type="button" class="secondary" id="bus-cancel">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <script src="/static/app.js"></script>
   {% endif %}
 </body>

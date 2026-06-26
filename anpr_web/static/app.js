@@ -97,6 +97,62 @@ async function reloadPlates() {
 document.getElementById("open-gate-btn")?.addEventListener("click", openGate);
 document.getElementById("reload-plates-btn")?.addEventListener("click", reloadPlates);
 
+function openBusModal(){
+  const modal = document.getElementById("bus-modal");
+  if(!modal) return;
+  document.getElementById("bus-plate-input").value = "";
+  document.getElementById("bus-label-input").value = "";
+  document.getElementById("bus-msg").textContent = "";
+  modal.hidden = false;
+  setTimeout(()=>document.getElementById("bus-plate-input").focus(), 50);
+}
+
+function closeBusModal(){
+  const modal = document.getElementById("bus-modal");
+  if(modal) modal.hidden = true;
+}
+
+document.getElementById("external-bus-btn")?.addEventListener("click", openBusModal);
+document.getElementById("bus-cancel")?.addEventListener("click", closeBusModal);
+document.getElementById("bus-modal")?.addEventListener("click", (ev)=>{
+  if(ev.target.id === "bus-modal") closeBusModal();
+});
+document.addEventListener("keydown", (ev)=>{
+  if(ev.key === "Escape") closeBusModal();
+});
+
+document.getElementById("bus-form")?.addEventListener("submit", async (ev)=>{
+  ev.preventDefault();
+  const plate = document.getElementById("bus-plate-input").value;
+  const label = document.getElementById("bus-label-input").value;
+  const msg = document.getElementById("bus-msg");
+  msg.textContent = "A adicionar...";
+  try{
+    const r = await fetch("/api/plates", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({
+        plates: plate,
+        label: label || "Autocarro externo",
+        is_external_bus: true,
+      }),
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || "erro");
+    if(data.added && data.added.length){
+      msg.textContent = `Autorizada: ${data.added.join(", ")}`;
+      setTimeout(closeBusModal, 800);
+      await refreshEvents();
+    } else if(data.skipped && data.skipped.length){
+      msg.textContent = `Já existia: ${data.skipped.join(", ")}`;
+    } else {
+      msg.textContent = "Nenhuma matrícula válida.";
+    }
+  }catch(e){
+    msg.textContent = "Erro: " + e.message;
+  }
+});
+
 async function tick() {
   try {
     await refreshStatus();
