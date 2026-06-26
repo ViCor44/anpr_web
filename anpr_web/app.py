@@ -242,6 +242,10 @@ class GPIOController:
         if GPIO_AVAILABLE:
             GPIO.setmode(GPIO.BCM)
             GPIO.setwarnings(False)
+            try:
+                GPIO.cleanup(self.pin)
+            except Exception:
+                pass
             GPIO.setup(self.pin, GPIO.OUT,
                        initial=GPIO.HIGH if ativo_baixo else GPIO.LOW)
 
