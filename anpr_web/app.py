@@ -62,7 +62,7 @@ except Exception as e:
 MODEL_VEHICLE   = "yolov8n.pt"
 VEHICLE_CLASSES = {2, 3, 5, 7}
 CONF_VEHICLE    = 0.45
-CONF_PLATE      = 0.25
+CONF_PLATE      = 0.35
 OCR_MODEL       = "global-plates-mobile-vit-v2-model"
 YOLO_IMGSZ      = 416
 DETECTAR_CADA_N = 3
