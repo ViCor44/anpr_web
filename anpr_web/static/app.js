@@ -66,6 +66,99 @@ async function refreshStatus() {
 async function refreshEvents() {
   const events = await getJSON("/api/events?limit=4");
   renderEvents(events);
+  checkForAlerts(events);
+}
+
+// ============ Alertas sonoros / notificacoes ============
+let alertsEnabled = false;
+let lastSeenEventId = null;
+let audioCtx = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch (e) { console.warn("AudioContext indisponivel", e); }
+}
+
+function playDeniedBeep() {
+  if (!audioCtx) return;
+  // Sequencia de 3 bips graves para alerta de matricula nao autorizada.
+  const now = audioCtx.currentTime;
+  for (let i = 0; i < 3; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 440;
+    gain.gain.setValueAtTime(0.0001, now + i * 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.3, now + i * 0.25 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.25 + 0.18);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now + i * 0.25);
+    osc.stop(now + i * 0.25 + 0.2);
+  }
+}
+
+function showNotification(title, body) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    new Notification(title, { body, tag: "anpr-denied" });
+  } catch (e) { console.warn("Notification falhou", e); }
+}
+
+function checkForAlerts(events) {
+  if (!events || events.length === 0) return;
+  // Primeira passagem: regista o id mais recente sem disparar.
+  if (lastSeenEventId === null) {
+    lastSeenEventId = events[0].id;
+    return;
+  }
+  if (!alertsEnabled) {
+    lastSeenEventId = events[0].id;
+    return;
+  }
+  // Encontra eventos novos (mais recentes que lastSeenEventId)
+  const novos = events.filter(e => e.id > lastSeenEventId);
+  lastSeenEventId = events[0].id;
+  for (const ev of novos) {
+    if (ev.event_type === "anpr_denied") {
+      playDeniedBeep();
+      showNotification(
+        "Matrícula não autorizada",
+        `${ev.plate || "--"}${ev.note ? " · " + ev.note : ""}`
+      );
+    }
+  }
+}
+
+async function enableAlerts() {
+  initAudio();
+  // Pequeno bip inicial para confirmar que o audio funciona.
+  if (audioCtx && audioCtx.state === "suspended") {
+    try { await audioCtx.resume(); } catch (e) {}
+  }
+  // Notificacoes do browser (opcional)
+  if ("Notification" in window && Notification.permission === "default") {
+    try { await Notification.requestPermission(); } catch (e) {}
+  }
+  alertsEnabled = true;
+  const btn = document.getElementById("enable-alerts-btn");
+  if (btn) {
+    btn.textContent = "🔔 Alertas ativos";
+    btn.disabled = true;
+  }
+  // Bip curto de confirmacao
+  if (audioCtx) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.15);
+  }
 }
 
 async function openGate() {
@@ -96,6 +189,7 @@ async function reloadPlates() {
 
 document.getElementById("open-gate-btn")?.addEventListener("click", openGate);
 document.getElementById("reload-plates-btn")?.addEventListener("click", reloadPlates);
+document.getElementById("enable-alerts-btn")?.addEventListener("click", enableAlerts);
 
 function openBusModal(){
   const modal = document.getElementById("bus-modal");
