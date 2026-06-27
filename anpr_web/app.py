@@ -657,6 +657,9 @@ class ANPREngine:
                 note=note if not relay_acionado else "Reconhecimento ANPR (rele acionado)"
             )
 
+            # So consome o cooldown global quando ha evento registado.
+            self.ultimo_check_ts = time.time()
+
             anpr_latest.update({
                 "plate": plate,
                 "confidence": conf,
@@ -697,7 +700,6 @@ class ANPREngine:
                 veiculo = any(int(box.cls[0]) in VEHICLE_CLASSES for box in res.boxes)
 
                 if veiculo and not self.processando:
-                    self.ultimo_check_ts = agora
                     self.processando = True
                     threading.Thread(target=self._processar, daemon=True).start()
 
