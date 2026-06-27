@@ -70,7 +70,8 @@ async function refreshEvents() {
 }
 
 // ============ Alertas sonoros / notificacoes ============
-let alertsEnabled = false;
+let alertsEnabled = true;
+let audioUnlocked = false;
 let lastSeenEventId = null;
 let audioCtx = null;
 
@@ -81,8 +82,20 @@ function initAudio() {
   } catch (e) { console.warn("AudioContext indisponivel", e); }
 }
 
+async function unlockAudioOnce() {
+  if (audioUnlocked) return;
+  initAudio();
+  if (audioCtx && audioCtx.state === "suspended") {
+    try { await audioCtx.resume(); } catch (e) {}
+  }
+  audioUnlocked = !!audioCtx && audioCtx.state === "running";
+  if ("Notification" in window && Notification.permission === "default") {
+    try { await Notification.requestPermission(); } catch (e) {}
+  }
+}
+
 function playDeniedBeep() {
-  if (!audioCtx) return;
+  if (!alertsEnabled || !audioCtx) return;
   // Sequencia de 3 bips graves para alerta de matricula nao autorizada.
   const now = audioCtx.currentTime;
   for (let i = 0; i < 3; i++) {
@@ -100,6 +113,7 @@ function playDeniedBeep() {
 }
 
 function showNotification(title, body) {
+  if (!alertsEnabled) return;
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   try {
@@ -118,7 +132,6 @@ function checkForAlerts(events) {
     lastSeenEventId = events[0].id;
     return;
   }
-  // Encontra eventos novos (mais recentes que lastSeenEventId)
   const novos = events.filter(e => e.id > lastSeenEventId);
   lastSeenEventId = events[0].id;
   for (const ev of novos) {
@@ -132,33 +145,27 @@ function checkForAlerts(events) {
   }
 }
 
-async function enableAlerts() {
-  initAudio();
-  // Pequeno bip inicial para confirmar que o audio funciona.
-  if (audioCtx && audioCtx.state === "suspended") {
-    try { await audioCtx.resume(); } catch (e) {}
-  }
-  // Notificacoes do browser (opcional)
-  if ("Notification" in window && Notification.permission === "default") {
-    try { await Notification.requestPermission(); } catch (e) {}
-  }
-  alertsEnabled = true;
+function updateAlertsButton() {
   const btn = document.getElementById("enable-alerts-btn");
-  if (btn) {
-    btn.textContent = "🔔 Alertas ativos";
-    btn.disabled = true;
-  }
-  // Bip curto de confirmacao
-  if (audioCtx) {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
-    osc.connect(gain).connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.15);
-  }
+  if (!btn) return;
+  btn.textContent = alertsEnabled ? "🔔 Alertas ativos" : "🔕 Alertas desativados";
+}
+
+function toggleAlerts() {
+  alertsEnabled = !alertsEnabled;
+  updateAlertsButton();
+  if (alertsEnabled) unlockAudioOnce();
+}
+
+// Desbloqueia audio + pede permissao na primeira interacao em qualquer parte da pagina.
+function installAudioUnlock() {
+  const handler = () => {
+    unlockAudioOnce();
+    document.removeEventListener("click", handler);
+    document.removeEventListener("keydown", handler);
+  };
+  document.addEventListener("click", handler, { once: false });
+  document.addEventListener("keydown", handler, { once: false });
 }
 
 async function openGate() {
@@ -189,7 +196,9 @@ async function reloadPlates() {
 
 document.getElementById("open-gate-btn")?.addEventListener("click", openGate);
 document.getElementById("reload-plates-btn")?.addEventListener("click", reloadPlates);
-document.getElementById("enable-alerts-btn")?.addEventListener("click", enableAlerts);
+document.getElementById("enable-alerts-btn")?.addEventListener("click", toggleAlerts);
+updateAlertsButton();
+installAudioUnlock();
 
 function openBusModal(){
   const modal = document.getElementById("bus-modal");
