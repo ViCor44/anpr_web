@@ -462,12 +462,17 @@ def open_gate(seconds=TEMPO_RELE_SEG):
 
 
 def mjpeg_generator():
+    target_w = 960
+    target_h = 540
     while True:
         frame = stream_sub.read()
         if frame is None:
             time.sleep(0.1)
             continue
-        ok, jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        h, w = frame.shape[:2]
+        if w > target_w:
+            frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
+        ok, jpg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         if not ok:
             continue
         yield (
@@ -476,7 +481,7 @@ def mjpeg_generator():
             jpg.tobytes() +
             b"\r\n"
         )
-        time.sleep(0.05)
+        time.sleep(0.1)
 
 
 # ===================== ANPR =====================
