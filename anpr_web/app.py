@@ -90,6 +90,10 @@ ANPR_CHECK_INTERVAL_S = 10
 ANPR_PLATE_RECHECK_S = 300
 ANPR_MIN_CONF_SAVE = 0.95
 RELE_COOLDOWN_S = 180
+ANPR_DENIED_CONFIRMATIONS = int(os.getenv("ANPR_DENIED_CONFIRMATIONS", "2"))
+ANPR_CONFIRM_WINDOW_S = float(os.getenv("ANPR_CONFIRM_WINDOW_S", "12"))
+ANPR_AUTHORIZED_VARIANT_WINDOW_S = float(os.getenv("ANPR_AUTHORIZED_VARIANT_WINDOW_S", "45"))
+ANPR_VARIANT_MAX_DISTANCE = int(os.getenv("ANPR_VARIANT_MAX_DISTANCE", "2"))
 
 REGEX_MATRICULA = re.compile(
     r"^("
@@ -116,6 +120,25 @@ def now_iso():
 
 def normalize_plate(value):
     return re.sub(r"[^A-Z0-9]", "", str(value).upper())
+
+
+def plate_edit_distance(left, right):
+    """Distancia de Levenshtein entre duas leituras OCR normalizadas."""
+    left = normalize_plate(left)
+    right = normalize_plate(right)
+    if len(left) < len(right):
+        left, right = right, left
+    previous = list(range(len(right) + 1))
+    for row, char_left in enumerate(left, 1):
+        current = [row]
+        for col, char_right in enumerate(right, 1):
+            current.append(min(
+                current[-1] + 1,
+                previous[col] + 1,
+                previous[col - 1] + (char_left != char_right),
+            ))
+        previous = current
+    return previous[-1]
 
 
 def is_european_plate_format(plate):
@@ -517,6 +540,10 @@ class ANPREngine:
         self.ultimo_snapshot_por_matricula = {}
         self.ultimo_rele_ts = 0
         self.ultimo_check_ts = 0
+        self.pending_denied = {}
+        self.last_confirmed_plate = None
+        self.last_confirmed_authorized = None
+        self.last_confirmed_ts = 0
 
         if not self.enabled:
             print("[ANPR] desativado")
@@ -653,8 +680,43 @@ class ANPREngine:
                 print(f"[ANPR] ignorado {plate_key} (personalizada nao registada)")
                 return
 
+            # Durante a passagem de um veiculo autorizado, o OCR pode perder ou
+            # trocar um caracter. Nao transforma essa variante num novo alerta.
+            if (
+                not authorized
+                and self.last_confirmed_authorized is True
+                and self.last_confirmed_plate
+                and (agora - self.last_confirmed_ts) <= ANPR_AUTHORIZED_VARIANT_WINDOW_S
+                and plate_edit_distance(plate_key, self.last_confirmed_plate) <= ANPR_VARIANT_MAX_DISTANCE
+            ):
+                print(
+                    f"[ANPR] variante OCR ignorada {plate_key} "
+                    f"(evento autorizado recente: {self.last_confirmed_plate})"
+                )
+                self.ultimo_check_ts = agora
+                return
+
             if (agora - self.ultimo_snapshot_por_matricula.get(plate_key, 0)) < ANPR_PLATE_RECHECK_S:
                 return
+
+            # Alertas negados exigem confirmacao temporal para evitar que uma
+            # unica leitura defeituosa provoque um alarme ao operador.
+            if not authorized and ANPR_DENIED_CONFIRMATIONS > 1:
+                pending = self.pending_denied.get(plate_key)
+                if not pending or (agora - pending["first_ts"]) > ANPR_CONFIRM_WINDOW_S:
+                    self.pending_denied[plate_key] = {"count": 1, "first_ts": agora}
+                    print(f"[ANPR] negada pendente de confirmacao: {plate_key} (1/{ANPR_DENIED_CONFIRMATIONS})")
+                    return
+                pending["count"] += 1
+                if pending["count"] < ANPR_DENIED_CONFIRMATIONS:
+                    print(
+                        f"[ANPR] negada pendente de confirmacao: {plate_key} "
+                        f"({pending['count']}/{ANPR_DENIED_CONFIRMATIONS})"
+                    )
+                    return
+                self.pending_denied.pop(plate_key, None)
+            elif authorized:
+                self.pending_denied.clear()
 
             self.ultimo_snapshot_por_matricula[plate_key] = agora
             snap = save_snapshot(frame, "anpr")
@@ -683,6 +745,10 @@ class ANPREngine:
                 snapshot_path=snap,
                 note=note if not relay_acionado else "Reconhecimento ANPR (rele acionado)"
             )
+
+            self.last_confirmed_plate = plate_key
+            self.last_confirmed_authorized = authorized
+            self.last_confirmed_ts = agora
 
             # So consome o cooldown global quando ha evento registado.
             self.ultimo_check_ts = time.time()
