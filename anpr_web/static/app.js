@@ -34,7 +34,9 @@ function renderEvents(events) {
     row.className = "event";
 
     const img = ev.snapshot_path
-      ? `<img src="/${ev.snapshot_path}" alt="snapshot">`
+      ? `<button type="button" class="event-snapshot" aria-label="Ampliar imagem do evento">
+           <img src="/${ev.snapshot_path}" alt="Imagem do evento">
+         </button>`
       : `<div style="width:96px;height:72px;background:#000;border-radius:8px"></div>`;
 
     row.innerHTML = `
@@ -48,9 +50,39 @@ function renderEvents(events) {
         ${ev.note ? `<div class="muted">${ev.note}</div>` : ""}
       </div>
     `;
+    row.querySelector(".event-snapshot")?.addEventListener("click", () => {
+      openEventImage(`/${ev.snapshot_path}`);
+    });
     el.appendChild(row);
   }
 }
+
+function openEventImage(src) {
+  const viewer = document.getElementById("event-image-viewer");
+  const image = document.getElementById("event-image-large");
+  if (!viewer || !image) return;
+  image.src = src;
+  viewer.hidden = false;
+  document.body.classList.add("modal-open");
+  document.getElementById("event-image-close")?.focus();
+}
+
+function closeEventImage() {
+  const viewer = document.getElementById("event-image-viewer");
+  const image = document.getElementById("event-image-large");
+  if (!viewer || viewer.hidden) return;
+  viewer.hidden = true;
+  image.removeAttribute("src");
+  document.body.classList.remove("modal-open");
+}
+
+document.getElementById("event-image-close")?.addEventListener("click", closeEventImage);
+document.getElementById("event-image-viewer")?.addEventListener("click", (event) => {
+  if (event.target.id === "event-image-viewer") closeEventImage();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeEventImage();
+});
 
 async function refreshStatus() {
   const data = await getJSON("/api/status");
