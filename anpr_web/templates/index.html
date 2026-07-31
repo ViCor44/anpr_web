@@ -36,7 +36,23 @@
           <h2>Live</h2>
           <span class="badge" id="live-badge">online</span>
         </div>
-        <img id="live-feed" src="/video_feed" alt="Live camera feed">
+        <div class="live-view">
+          <img id="live-feed" data-camera="1" src="/video_feed" alt="Imagem em direto da Camara 1">
+          <div class="live-unavailable" id="live-unavailable" hidden>
+            <strong>Camara 2 por configurar</strong>
+            <span>Adicione os dados RTSP no servidor para ativar este stream.</span>
+          </div>
+        </div>
+        <div class="camera-picker" aria-label="Selecionar camara">
+          <button type="button" class="camera-thumb active" data-camera="1" data-feed="/video_feed" data-configured="true" aria-pressed="true">
+            <img src="/video_feed" alt="Miniatura da Camara 1">
+            <span><strong>Camara 1</strong><small>Atual</small></span>
+          </button>
+          <button type="button" class="camera-thumb" data-camera="2" data-feed="/video_feed/2" data-configured="false" aria-pressed="false">
+            <span class="thumb-placeholder">2</span>
+            <span><strong>Camara 2</strong><small>Por configurar</small></span>
+          </button>
+        </div>
       </div>
 
       <div class="grid">

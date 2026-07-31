@@ -24,6 +24,16 @@ CAM_PORT = 554
 
 RTSP_MAIN = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}/stream1"
 RTSP_SUB  = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}/stream2"
+
+# Segunda camera (opcional). Pode ser configurada sem expor credenciais no browser.
+CAM2_IP = os.getenv("CAM2_IP", "").strip()
+CAM2_USER = os.getenv("CAM2_USER", "").strip()
+CAM2_PASS = os.getenv("CAM2_PASS", "").strip()
+CAM2_PORT = int(os.getenv("CAM2_PORT", "554"))
+CAM2_PATH = os.getenv("CAM2_PATH", "/stream2").strip()
+RTSP_CAM2 = os.getenv("CAM2_RTSP_URL", "").strip()
+if not RTSP_CAM2 and CAM2_IP and CAM2_USER:
+    RTSP_CAM2 = f"rtsp://{CAM2_USER}:{CAM2_PASS}@{CAM2_IP}:{CAM2_PORT}{CAM2_PATH}"
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
 
 RELE_PIN         = 17
@@ -437,6 +447,7 @@ class RTSPStream:
 
 stream_sub = RTSPStream(RTSP_SUB, "sub").start()
 stream_main = RTSPStream(RTSP_MAIN, "main").start()
+stream_camera2 = RTSPStream(RTSP_CAM2, "camera2").start() if RTSP_CAM2 else None
 gpio = GPIOController(RELE_PIN, RELE_ATIVO_BAIXO)
 
 anpr_lock = threading.Lock()
@@ -461,11 +472,12 @@ def open_gate(seconds=TEMPO_RELE_SEG):
     threading.Thread(target=gpio.acionar, args=(seconds,), daemon=True).start()
 
 
-def mjpeg_generator():
+def mjpeg_generator(source=None):
+    source = source or stream_sub
     target_w = 960
     target_h = 540
     while True:
-        frame = stream_sub.read()
+        frame = source.read()
         if frame is None:
             time.sleep(0.1)
             continue
@@ -765,11 +777,23 @@ def video_feed():
     return Response(mjpeg_generator(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
+@app.route("/video_feed/2")
+@login_required
+def video_feed_2():
+    if stream_camera2 is None:
+        return "Segunda camera nao configurada", 404
+    return Response(mjpeg_generator(stream_camera2), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
 @app.route("/api/status")
 @login_required
 def api_status():
     return jsonify({
         "camera_ip": CAM_IP,
+        "cameras": [
+            {"id": "1", "name": "Camara 1", "ip": CAM_IP, "configured": True},
+            {"id": "2", "name": "Camara 2", "ip": CAM2_IP or None, "configured": bool(RTSP_CAM2)},
+        ],
         "anpr_enabled": ANPR_ENABLED,
         "latest": anpr_latest
     })

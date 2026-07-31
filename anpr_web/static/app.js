@@ -54,7 +54,7 @@ function renderEvents(events) {
 
 async function refreshStatus() {
   const data = await getJSON("/api/status");
-  document.getElementById("camera-ip").textContent = `Câmara: ${data.camera_ip}`;
+  setupCameras(data.cameras || []);
   const latest = data.latest || {};
   document.getElementById("latest-plate").textContent = latest.plate || "--";
   document.getElementById("latest-confidence").textContent = fmtConfidence(latest.confidence);
@@ -62,6 +62,60 @@ async function refreshStatus() {
     latest.authorized === true ? "Autorizada" :
     latest.authorized === false ? "Negada" : "--";
 }
+
+let selectedCamera = "1";
+let availableCameras = [];
+
+function updateCameraLabel() {
+  const camera = availableCameras.find((item) => item.id === selectedCamera);
+  document.getElementById("camera-ip").textContent = camera
+    ? `${camera.name}: ${camera.ip || "por configurar"}`
+    : "Camara: --";
+}
+
+function selectCamera(button) {
+  const configured = button.dataset.configured !== "false";
+  selectedCamera = button.dataset.camera;
+  document.querySelectorAll(".camera-thumb").forEach((item) => {
+    const active = item === button;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
+  });
+
+  const feed = document.getElementById("live-feed");
+  const unavailable = document.getElementById("live-unavailable");
+  feed.hidden = !configured;
+  unavailable.hidden = configured;
+  if (configured && feed.dataset.camera !== selectedCamera) {
+    feed.src = `${button.dataset.feed}?view=${Date.now()}`;
+    feed.dataset.camera = selectedCamera;
+    feed.alt = `Imagem em direto da Camara ${selectedCamera}`;
+  }
+  updateCameraLabel();
+}
+
+function setupCameras(cameras) {
+  availableCameras = cameras;
+  for (const camera of cameras) {
+    const button = document.querySelector(`.camera-thumb[data-camera="${camera.id}"]`);
+    if (!button) continue;
+    button.dataset.configured = String(camera.configured);
+    const small = button.querySelector("small");
+    if (small) small.textContent = camera.configured ? (camera.ip || "Disponivel") : "Por configurar";
+
+    if (camera.id === "2" && camera.configured && !button.querySelector("img")) {
+      const preview = document.createElement("img");
+      preview.src = button.dataset.feed;
+      preview.alt = `Miniatura da ${camera.name}`;
+      button.querySelector(".thumb-placeholder")?.replaceWith(preview);
+    }
+  }
+  updateCameraLabel();
+}
+
+document.querySelectorAll(".camera-thumb").forEach((button) => {
+  button.addEventListener("click", () => selectCamera(button));
+});
 
 async function refreshEvents() {
   const events = await getJSON("/api/events?limit=4");
