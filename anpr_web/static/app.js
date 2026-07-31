@@ -150,16 +150,23 @@ document.querySelectorAll(".camera-thumb").forEach((button) => {
 });
 
 async function refreshEvents() {
-  const events = await getJSON("/api/events?limit=4");
-  renderEvents(events);
+  // Verifica mais eventos do que os quatro apresentados para nao perder alertas em rajada.
+  const events = await getJSON("/api/events?limit=20");
+  renderEvents(events.slice(0, 4));
   checkForAlerts(events);
 }
 
-// ============ Alertas sonoros / notificacoes ============
-let alertsEnabled = true;
+// ============ Alerta persistente de matricula nao autorizada ============
+let soundEnabled = false;
 let audioUnlocked = false;
 let lastSeenEventId = null;
 let audioCtx = null;
+let alarmTimer = null;
+let titleTimer = null;
+let originalTitle = document.title;
+let activeDeniedAlert = null;
+const deniedAlertQueue = [];
+const queuedDeniedIds = new Set();
 
 function initAudio() {
   if (audioCtx) return;
@@ -168,90 +175,175 @@ function initAudio() {
   } catch (e) { console.warn("AudioContext indisponivel", e); }
 }
 
-async function unlockAudioOnce() {
-  if (audioUnlocked) return;
+async function enableAlertSound() {
+  if ("Notification" in window && Notification.permission === "default") {
+    try { await Notification.requestPermission(); } catch (e) {}
+  }
   initAudio();
   if (audioCtx && audioCtx.state === "suspended") {
     try { await audioCtx.resume(); } catch (e) {}
   }
   audioUnlocked = !!audioCtx && audioCtx.state === "running";
-  if ("Notification" in window && Notification.permission === "default") {
-    try { await Notification.requestPermission(); } catch (e) {}
-  }
+  soundEnabled = audioUnlocked;
+  updateAlertsButton();
+  if (soundEnabled) playDeniedBeep(true);
 }
 
-function playDeniedBeep() {
-  if (!alertsEnabled || !audioCtx) return;
-  // Sequencia de 3 bips graves para alerta de matricula nao autorizada.
+function playDeniedBeep(testOnly = false) {
+  if (!soundEnabled || !audioUnlocked || !audioCtx) return;
   const now = audioCtx.currentTime;
-  for (let i = 0; i < 3; i++) {
+  const count = testOnly ? 1 : 3;
+  for (let i = 0; i < count; i++) {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.type = "square";
-    osc.frequency.value = 440;
-    gain.gain.setValueAtTime(0.0001, now + i * 0.25);
-    gain.gain.exponentialRampToValueAtTime(0.3, now + i * 0.25 + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.25 + 0.18);
+    osc.type = "sawtooth";
+    osc.frequency.value = i % 2 ? 620 : 480;
+    gain.gain.setValueAtTime(0.0001, now + i * 0.28);
+    gain.gain.exponentialRampToValueAtTime(0.38, now + i * 0.28 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.28 + 0.22);
     osc.connect(gain).connect(audioCtx.destination);
-    osc.start(now + i * 0.25);
-    osc.stop(now + i * 0.25 + 0.2);
+    osc.start(now + i * 0.28);
+    osc.stop(now + i * 0.28 + 0.24);
   }
 }
 
 function showNotification(title, body) {
-  if (!alertsEnabled) return;
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   try {
-    new Notification(title, { body, tag: "anpr-denied" });
+    new Notification(title, {
+      body,
+      tag: "anpr-denied",
+      renotify: true,
+      requireInteraction: true,
+    });
   } catch (e) { console.warn("Notification falhou", e); }
 }
 
 function checkForAlerts(events) {
   if (!events || events.length === 0) return;
-  // Primeira passagem: regista o id mais recente sem disparar.
+  const newestId = Math.max(...events.map((event) => Number(event.id) || 0));
   if (lastSeenEventId === null) {
-    lastSeenEventId = events[0].id;
+    lastSeenEventId = newestId;
     return;
   }
-  if (!alertsEnabled) {
-    lastSeenEventId = events[0].id;
-    return;
+  const novos = events
+    .filter((event) => Number(event.id) > lastSeenEventId && event.event_type === "anpr_denied")
+    .sort((a, b) => Number(a.id) - Number(b.id));
+  lastSeenEventId = Math.max(lastSeenEventId, newestId);
+  for (const event of novos) {
+    enqueueDeniedAlert(event);
   }
-  const novos = events.filter(e => e.id > lastSeenEventId);
-  lastSeenEventId = events[0].id;
-  for (const ev of novos) {
-    if (ev.event_type === "anpr_denied") {
-      playDeniedBeep();
-      showNotification(
-        "Matrícula não autorizada",
-        `${ev.plate || "--"}${ev.note ? " · " + ev.note : ""}`
-      );
+  showNextDeniedAlert();
+}
+
+function enqueueDeniedAlert(event) {
+  const eventId = Number(event.id) || 0;
+  if (eventId) lastSeenEventId = Math.max(lastSeenEventId || 0, eventId);
+  if (queuedDeniedIds.has(event.id)) return;
+  queuedDeniedIds.add(event.id);
+  deniedAlertQueue.push(event);
+  showNextDeniedAlert();
+}
+
+function connectAlertStream() {
+  if (!("EventSource" in window)) return;
+  const stream = new EventSource("/api/alerts/stream");
+  stream.addEventListener("denied", (message) => {
+    try {
+      enqueueDeniedAlert(JSON.parse(message.data));
+    } catch (error) {
+      console.error("Alerta SSE invalido", error);
     }
-  }
+  });
+  stream.addEventListener("error", () => {
+    // EventSource volta a ligar automaticamente; o polling continua como redundancia.
+    console.warn("Canal de alertas temporariamente desligado; a tentar novamente.");
+  });
+  window.addEventListener("beforeunload", () => stream.close(), { once: true });
 }
 
 function updateAlertsButton() {
   const btn = document.getElementById("enable-alerts-btn");
   if (!btn) return;
-  btn.textContent = alertsEnabled ? "🔔 Alertas ativos" : "🔕 Alertas desativados";
+  btn.textContent = soundEnabled && audioUnlocked
+    ? "🔔 Som de alerta ativo"
+    : "🔇 Ativar som de alerta";
+  btn.classList.toggle("sound-ready", soundEnabled && audioUnlocked);
 }
 
-function toggleAlerts() {
-  alertsEnabled = !alertsEnabled;
+async function toggleAlerts() {
+  if (!soundEnabled) {
+    await enableAlertSound();
+    return;
+  }
+  soundEnabled = false;
+  stopDeniedAlarm();
   updateAlertsButton();
-  if (alertsEnabled) unlockAudioOnce();
 }
 
-// Desbloqueia audio + pede permissao na primeira interacao em qualquer parte da pagina.
-function installAudioUnlock() {
-  const handler = () => {
-    unlockAudioOnce();
-    document.removeEventListener("click", handler);
-    document.removeEventListener("keydown", handler);
-  };
-  document.addEventListener("click", handler, { once: false });
-  document.addEventListener("keydown", handler, { once: false });
+function startDeniedAlarm() {
+  stopDeniedAlarm();
+  playDeniedBeep();
+  if (soundEnabled) alarmTimer = setInterval(playDeniedBeep, 2200);
+  let visible = true;
+  titleTimer = setInterval(() => {
+    visible = !visible;
+    document.title = visible ? "⚠ MATRICULA NAO AUTORIZADA" : originalTitle;
+  }, 700);
+}
+
+function stopDeniedAlarm() {
+  if (alarmTimer) clearInterval(alarmTimer);
+  if (titleTimer) clearInterval(titleTimer);
+  alarmTimer = null;
+  titleTimer = null;
+  document.title = originalTitle;
+}
+
+function showNextDeniedAlert() {
+  if (activeDeniedAlert || deniedAlertQueue.length === 0) return;
+  activeDeniedAlert = deniedAlertQueue.shift();
+  const viewer = document.getElementById("denied-alert");
+  document.getElementById("denied-alert-plate").textContent = activeDeniedAlert.plate || "DESCONHECIDA";
+  document.getElementById("denied-alert-time").textContent = activeDeniedAlert.ts || "";
+  const image = document.getElementById("denied-alert-image");
+  if (activeDeniedAlert.snapshot_path) {
+    image.src = `/${activeDeniedAlert.snapshot_path}`;
+    image.hidden = false;
+  } else {
+    image.hidden = true;
+    image.removeAttribute("src");
+  }
+  document.getElementById("denied-alert-sound-state").hidden = soundEnabled && audioUnlocked;
+  viewer.hidden = false;
+  startDeniedAlarm();
+  showNotification("Matricula nao autorizada junto ao portao", activeDeniedAlert.plate || "Matricula desconhecida");
+}
+
+function dismissDeniedAlert() {
+  if (!activeDeniedAlert) return;
+  queuedDeniedIds.delete(activeDeniedAlert.id);
+  activeDeniedAlert = null;
+  document.getElementById("denied-alert").hidden = true;
+  stopDeniedAlarm();
+  showNextDeniedAlert();
+}
+
+async function openGateFromAlert() {
+  const button = document.getElementById("denied-alert-open");
+  button.disabled = true;
+  button.textContent = "A abrir...";
+  try {
+    const data = await getJSON("/api/open_gate", { method: "POST" });
+    document.getElementById("manual-result").textContent = `Portao aberto. IP origem: ${data.client_ip}`;
+    dismissDeniedAlert();
+  } catch (error) {
+    document.getElementById("denied-alert-error").textContent = `Nao foi possivel abrir: ${error.message}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Abrir portao";
+  }
 }
 
 async function openGate() {
@@ -283,8 +375,15 @@ async function reloadPlates() {
 document.getElementById("open-gate-btn")?.addEventListener("click", openGate);
 document.getElementById("reload-plates-btn")?.addEventListener("click", reloadPlates);
 document.getElementById("enable-alerts-btn")?.addEventListener("click", toggleAlerts);
+document.getElementById("denied-alert-open")?.addEventListener("click", openGateFromAlert);
+document.getElementById("denied-alert-dismiss")?.addEventListener("click", dismissDeniedAlert);
+document.getElementById("denied-alert-enable-sound")?.addEventListener("click", async () => {
+  await enableAlertSound();
+  document.getElementById("denied-alert-sound-state").hidden = soundEnabled && audioUnlocked;
+  if (activeDeniedAlert) startDeniedAlarm();
+});
 updateAlertsButton();
-installAudioUnlock();
+connectAlertStream();
 
 function openBusModal(){
   const modal = document.getElementById("bus-modal");
@@ -343,11 +442,10 @@ document.getElementById("bus-form")?.addEventListener("submit", async (ev)=>{
 });
 
 async function tick() {
-  try {
-    await refreshStatus();
-    await refreshEvents();    
-  } catch (e) {
-    console.error(e);
+  // O alerta de eventos deve continuar mesmo que a consulta de estado da camera falhe.
+  const results = await Promise.allSettled([refreshStatus(), refreshEvents()]);
+  for (const result of results) {
+    if (result.status === "rejected") console.error(result.reason);
   }
 }
 

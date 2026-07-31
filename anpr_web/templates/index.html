@@ -78,7 +78,7 @@
         </div>
         <button id="open-gate-btn" class="danger">Abrir portão</button>
         <button id="external-bus-btn" class="secondary" style="width:100%;margin-top:10px">Autocarro externo (abertura única)</button>
-        <button id="enable-alerts-btn" class="secondary" style="width:100%;margin-top:10px">🔔 Alertas ativos</button>
+        <button id="enable-alerts-btn" class="secondary" style="width:100%;margin-top:10px">🔇 Ativar som de alerta</button>
         <div class="muted top-space" id="manual-result">Nenhuma acção manual ainda.</div>
       </div>      
       <div class="card">
@@ -90,6 +90,35 @@
       </div>
     </section>
   </main>
+
+  <div id="denied-alert" class="denied-alert-overlay" hidden role="alertdialog" aria-modal="true" aria-labelledby="denied-alert-title">
+    <div class="denied-alert-card">
+      <div class="denied-alert-heading">
+        <span class="denied-alert-icon">!</span>
+        <div>
+          <h2 id="denied-alert-title">Matricula nao autorizada</h2>
+          <p>Veiculo detetado junto ao portao</p>
+        </div>
+      </div>
+      <div class="denied-alert-content">
+        <img id="denied-alert-image" alt="Imagem do veiculo detetado">
+        <div class="denied-alert-details">
+          <span>Matricula detetada</span>
+          <strong id="denied-alert-plate">--</strong>
+          <span id="denied-alert-time"></span>
+        </div>
+      </div>
+      <div id="denied-alert-sound-state" class="sound-warning">
+        O som ainda nao esta ativo neste browser.
+        <button type="button" id="denied-alert-enable-sound">Ativar som agora</button>
+      </div>
+      <div id="denied-alert-error" class="denied-alert-error" aria-live="polite"></div>
+      <div class="denied-alert-actions">
+        <button type="button" id="denied-alert-dismiss" class="secondary">Ignorar / manter fechado</button>
+        <button type="button" id="denied-alert-open" class="danger">Abrir portao</button>
+      </div>
+    </div>
+  </div>
 
   <div id="bus-modal" class="modal-overlay" hidden>
     <div class="modal">

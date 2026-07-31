@@ -95,6 +95,7 @@ button,.linkbtn{
 button.secondary,.linkbtn.secondary{
   background:#334155;
 }
+button.sound-ready{background:#166534;border:1px solid var(--ok)}
 button.danger{
   width:100%;
   background:var(--bad);
@@ -126,6 +127,23 @@ button.danger{
 .image-viewer[hidden]{display:none}
 .image-viewer img{display:block;max-width:min(1200px,95vw);max-height:calc(100vh - 76px);width:auto;height:auto;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6);cursor:default}
 .image-viewer-close{position:fixed;top:14px;right:18px;width:42px;height:42px;padding:0;border-radius:50%;background:rgba(51,65,85,.9);font-size:30px;line-height:1}
+.denied-alert-overlay{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(20,0,0,.9)}
+.denied-alert-overlay[hidden]{display:none}
+.denied-alert-card{width:min(680px,100%);padding:24px;background:#1b1114;border:2px solid var(--bad);border-radius:16px;box-shadow:0 0 0 6px rgba(239,68,68,.15),0 24px 70px rgba(0,0,0,.7)}
+.denied-alert-heading{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.denied-alert-heading h2{margin:0;color:#fecaca;font-size:26px}
+.denied-alert-heading p{margin:4px 0 0;color:#fca5a5}
+.denied-alert-icon{display:grid;place-items:center;flex:0 0 52px;height:52px;border-radius:50%;background:var(--bad);font-size:34px;font-weight:900}
+.denied-alert-content{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,1fr);gap:18px;align-items:center}
+.denied-alert-content img{width:100%;max-height:330px;object-fit:contain;background:#000;border-radius:10px}
+.denied-alert-details{display:flex;flex-direction:column;gap:8px;color:var(--muted)}
+.denied-alert-details strong{color:#fff;font:700 34px Consolas,monospace;overflow-wrap:anywhere}
+.sound-warning{margin-top:16px;padding:10px 12px;border-radius:10px;background:rgba(245,158,11,.13);color:#fde68a}
+.sound-warning button{margin-left:8px;padding:8px 10px;background:var(--warn);color:#111}
+.denied-alert-error{min-height:20px;margin-top:10px;color:#fecaca}
+.denied-alert-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.denied-alert-actions button{min-height:54px;font-size:16px;font-weight:700}
+@media (max-width:600px){.denied-alert-content{grid-template-columns:1fr}.denied-alert-content img{max-height:240px}.denied-alert-actions{grid-template-columns:1fr}.denied-alert-heading h2{font-size:21px}}
 .event-title{
   font-weight:700;
   margin-bottom:4px;

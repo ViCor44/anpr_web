@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, Response, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, Response, render_template, request, jsonify, redirect, url_for, session, stream_with_context
 
 # ===================== CONFIG =====================
 APP_HOST = "0.0.0.0"
@@ -814,6 +814,49 @@ def api_status():
 def api_events():
     limit = int(request.args.get("limit", 20))
     return jsonify(list_events(limit))
+
+
+@app.route("/api/alerts/stream")
+@login_required
+def api_alerts_stream():
+    """Canal SSE para alertas imediatos, inclusive com o separador em segundo plano."""
+    header_id = request.headers.get("Last-Event-ID", "").strip()
+    if header_id.isdigit():
+        initial_id = int(header_id)
+    else:
+        latest = list_events(1)
+        initial_id = int(latest[0]["id"]) if latest else 0
+
+    @stream_with_context
+    def generate():
+        last_id = initial_id
+        heartbeat_at = time.monotonic()
+        yield "retry: 3000\n\n"
+        while True:
+            events = list_events(50)
+            new_events = sorted(
+                (event for event in events if int(event["id"]) > last_id),
+                key=lambda event: int(event["id"]),
+            )
+            for event in new_events:
+                last_id = max(last_id, int(event["id"]))
+                if event["event_type"] == "anpr_denied":
+                    yield f"id: {event['id']}\nevent: denied\ndata: {json.dumps(event)}\n\n"
+
+            if time.monotonic() - heartbeat_at >= 15:
+                yield ": keep-alive\n\n"
+                heartbeat_at = time.monotonic()
+            time.sleep(1)
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.route("/api/open_gate", methods=["POST"])
