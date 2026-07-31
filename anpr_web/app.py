@@ -17,13 +17,23 @@ APP_PORT = 8080
 SECRET_KEY = "troca_esta_chave_agora"
 WEB_PASSWORD = "1234"   # troca isto
 
-CAM_IP   = "191.188.127.7"
-CAM_USER = "admin"
-CAM_PASS = "desenvolvimento1986"
-CAM_PORT = 554
+# Credenciais das cameras: carregar de /etc/anpr_web.env atraves do systemd.
+CAM_IP = os.getenv("CAM1_IP", "").strip()
+CAM_USER = os.getenv("CAM1_USER", "").strip()
+CAM_PASS = os.getenv("CAM1_PASS", "").strip()
+CAM_PORT = int(os.getenv("CAM1_PORT", "554"))
+CAM1_MAIN_PATH = os.getenv("CAM1_MAIN_PATH", "/stream1").strip()
+CAM1_SUB_PATH = os.getenv("CAM1_SUB_PATH", "/stream2").strip()
 
-RTSP_MAIN = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}/stream1"
-RTSP_SUB  = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}/stream2"
+RTSP_MAIN = os.getenv("CAM1_RTSP_MAIN_URL", "").strip()
+RTSP_SUB = os.getenv("CAM1_RTSP_SUB_URL", "").strip()
+if not RTSP_MAIN and CAM_IP and CAM_USER:
+    RTSP_MAIN = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}{CAM1_MAIN_PATH}"
+if not RTSP_SUB and CAM_IP and CAM_USER:
+    RTSP_SUB = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}{CAM1_SUB_PATH}"
+
+if not RTSP_MAIN or not RTSP_SUB:
+    raise RuntimeError("Camera 1 nao configurada. Defina CAM1_* em /etc/anpr_web.env")
 
 # Segunda camera (opcional). Pode ser configurada sem expor credenciais no browser.
 CAM2_IP = os.getenv("CAM2_IP", "").strip()
