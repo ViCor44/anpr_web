@@ -186,6 +186,7 @@ async function enableAlertSound() {
   audioUnlocked = !!audioCtx && audioCtx.state === "running";
   soundEnabled = audioUnlocked;
   updateAlertsButton();
+  updateNotificationStatus();
   if (soundEnabled) playDeniedBeep(true);
 }
 
@@ -211,12 +212,16 @@ function showNotification(title, body) {
   if (!("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
   try {
-    new Notification(title, {
+    const notification = new Notification(title, {
       body,
       tag: "anpr-denied",
       renotify: true,
       requireInteraction: true,
     });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
   } catch (e) { console.warn("Notification falhou", e); }
 }
 
@@ -266,10 +271,27 @@ function connectAlertStream() {
 function updateAlertsButton() {
   const btn = document.getElementById("enable-alerts-btn");
   if (!btn) return;
-  btn.textContent = soundEnabled && audioUnlocked
-    ? "🔔 Som de alerta ativo"
-    : "🔇 Ativar som de alerta";
+  const notificationsEnabled = "Notification" in window && Notification.permission === "granted";
+  btn.textContent = soundEnabled && audioUnlocked && notificationsEnabled
+    ? "🔔 Notificações e som ativos"
+    : "🔔 Ativar notificações e som";
   btn.classList.toggle("sound-ready", soundEnabled && audioUnlocked);
+}
+
+function updateNotificationStatus() {
+  const status = document.getElementById("notification-status");
+  if (!status) return;
+  if (!("Notification" in window)) {
+    status.textContent = "Este browser não suporta notificações do sistema.";
+  } else if (!window.isSecureContext) {
+    status.textContent = "As notificações exigem HTTPS (ou acesso por localhost).";
+  } else if (Notification.permission === "granted") {
+    status.textContent = "Notificações do sistema autorizadas.";
+  } else if (Notification.permission === "denied") {
+    status.textContent = "Notificações bloqueadas. Autorize-as nas definições do browser.";
+  } else {
+    status.textContent = "Clique para autorizar os alertas mesmo com a janela minimizada.";
+  }
 }
 
 async function toggleAlerts() {
@@ -280,6 +302,7 @@ async function toggleAlerts() {
   soundEnabled = false;
   stopDeniedAlarm();
   updateAlertsButton();
+  updateNotificationStatus();
 }
 
 function startDeniedAlarm() {
@@ -383,6 +406,7 @@ document.getElementById("denied-alert-enable-sound")?.addEventListener("click", 
   if (activeDeniedAlert) startDeniedAlarm();
 });
 updateAlertsButton();
+updateNotificationStatus();
 connectAlertStream();
 
 function openBusModal(){
