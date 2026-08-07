@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 from datetime import datetime, timedelta
 from functools import wraps
+from urllib.parse import quote
 
 from flask import Flask, Response, render_template, request, jsonify, redirect, url_for, session, stream_with_context
 
@@ -28,9 +29,9 @@ CAM1_SUB_PATH = os.getenv("CAM1_SUB_PATH", "/stream2").strip()
 RTSP_MAIN = os.getenv("CAM1_RTSP_MAIN_URL", "").strip()
 RTSP_SUB = os.getenv("CAM1_RTSP_SUB_URL", "").strip()
 if not RTSP_MAIN and CAM_IP and CAM_USER:
-    RTSP_MAIN = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}{CAM1_MAIN_PATH}"
+    RTSP_MAIN = f"rtsp://{quote(CAM_USER, safe='')}:{quote(CAM_PASS, safe='')}@{CAM_IP}:{CAM_PORT}{CAM1_MAIN_PATH}"
 if not RTSP_SUB and CAM_IP and CAM_USER:
-    RTSP_SUB = f"rtsp://{CAM_USER}:{CAM_PASS}@{CAM_IP}:{CAM_PORT}{CAM1_SUB_PATH}"
+    RTSP_SUB = f"rtsp://{quote(CAM_USER, safe='')}:{quote(CAM_PASS, safe='')}@{CAM_IP}:{CAM_PORT}{CAM1_SUB_PATH}"
 
 if not RTSP_MAIN or not RTSP_SUB:
     raise RuntimeError("Camera 1 nao configurada. Defina CAM1_* em /etc/anpr_web.env")
@@ -43,7 +44,7 @@ CAM2_PORT = int(os.getenv("CAM2_PORT", "554"))
 CAM2_PATH = os.getenv("CAM2_PATH", "/stream2").strip()
 RTSP_CAM2 = os.getenv("CAM2_RTSP_URL", "").strip()
 if not RTSP_CAM2 and CAM2_IP and CAM2_USER:
-    RTSP_CAM2 = f"rtsp://{CAM2_USER}:{CAM2_PASS}@{CAM2_IP}:{CAM2_PORT}{CAM2_PATH}"
+    RTSP_CAM2 = f"rtsp://{quote(CAM2_USER, safe='')}:{quote(CAM2_PASS, safe='')}@{CAM2_IP}:{CAM2_PORT}{CAM2_PATH}"
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;5000000"
 
 RELE_PIN         = 17
