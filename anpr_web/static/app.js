@@ -46,7 +46,7 @@ function renderEvents(events) {
         <div class="muted">${ev.ts}</div>
         ${ev.plate ? `<div>Matrícula: <strong>${ev.plate}</strong></div>` : ""}
         ${ev.confidence !== null ? `<div>Confiança: ${fmtConfidence(ev.confidence)}</div>` : ""}
-        ${ev.client_ip ? `<div>IP origem: ${ev.client_ip}</div>` : ""}
+        ${ev.client_ip ? `<div>Origem: ${ev.client_name ? `${ev.client_name} · ` : ""}${ev.client_ip}</div>` : ""}
         ${ev.note ? `<div class="muted">${ev.note}</div>` : ""}
       </div>
     `;
@@ -359,7 +359,7 @@ async function openGateFromAlert() {
   button.textContent = "A abrir...";
   try {
     const data = await getJSON("/api/open_gate", { method: "POST" });
-    document.getElementById("manual-result").textContent = `Portao aberto. IP origem: ${data.client_ip}`;
+    document.getElementById("manual-result").textContent = `Portao aberto. Origem: ${data.client_name ? `${data.client_name} · ` : ""}${data.client_ip}`;
     dismissDeniedAlert();
   } catch (error) {
     document.getElementById("denied-alert-error").textContent = `Nao foi possivel abrir: ${error.message}`;
@@ -376,7 +376,7 @@ async function openGate() {
   btn.textContent = "A abrir...";
   try {
     const data = await getJSON("/api/open_gate", { method: "POST" });
-    result.textContent = `Portão aberto. IP origem: ${data.client_ip}`;
+    result.textContent = `Portão aberto. Origem: ${data.client_name ? `${data.client_name} · ` : ""}${data.client_ip}`;
     await refreshEvents();
   } catch (e) {
     result.textContent = `Erro: ${e.message}`;

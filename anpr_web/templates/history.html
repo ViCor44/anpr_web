@@ -73,7 +73,7 @@
             <div class="muted">${ev.ts}</div>
             ${ev.plate ? `<div>Matrícula: <strong>${ev.plate}</strong></div>` : ""}
             ${ev.confidence!=null ? `<div>Confiança: ${fmtConfidence(ev.confidence)}</div>` : ""}
-            ${ev.client_ip ? `<div>IP origem: ${ev.client_ip}</div>` : ""}
+            ${ev.client_ip ? `<div>Origem: ${ev.client_name ? `${ev.client_name} · ` : ""}${ev.client_ip}</div>` : ""}
             ${ev.note ? `<div class="muted">${ev.note}</div>` : ""}
           </div>
         `;

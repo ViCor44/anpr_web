@@ -59,6 +59,14 @@ EVENTS_LOG_PATH = DATA_DIR / "events.log"
 VALIDAS_PATH = Path.home() / "matriculas_validas.txt"
 MAX_EVENTS_HISTORY = 500
 
+# Nomes amigaveis dos postos que usam a interface web.
+# Formato: "192.168.50.223=PC-Portaria,192.168.50.224=PC-Rececao"
+CLIENT_NAMES = {}
+for client_entry in os.getenv("CLIENT_NAMES", "").split(","):
+    client_address, separator, client_name = client_entry.partition("=")
+    if separator and client_address.strip() and client_name.strip():
+        CLIENT_NAMES[client_address.strip()] = client_name.strip()
+
 for p in [DATA_DIR, SNAP_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -155,6 +163,10 @@ def client_ip():
     return request.remote_addr or "unknown"
 
 
+def client_name(ip):
+    return CLIENT_NAMES.get(ip)
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -181,11 +193,15 @@ def init_db():
             confidence REAL,
             authorized INTEGER,
             client_ip TEXT,
+            client_name TEXT,
             user_agent TEXT,
             snapshot_path TEXT,
             note TEXT
         )
     """)
+    event_cols = {row["name"] for row in conn.execute("PRAGMA table_info(events)").fetchall()}
+    if "client_name" not in event_cols:
+        conn.execute("ALTER TABLE events ADD COLUMN client_name TEXT")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS plates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,7 +231,8 @@ def init_db():
     conn.close()
 
 def add_event(event_type, plate=None, confidence=None, authorized=None,
-              client_ip_value=None, user_agent=None, snapshot_path=None, note=None):
+              client_ip_value=None, client_name_value=None, user_agent=None,
+              snapshot_path=None, note=None):
     event_record = {
         "ts": now_iso(),
         "event_type": event_type,
@@ -223,6 +240,7 @@ def add_event(event_type, plate=None, confidence=None, authorized=None,
         "confidence": confidence,
         "authorized": None if authorized is None else (1 if authorized else 0),
         "client_ip": client_ip_value,
+        "client_name": client_name_value or client_name(client_ip_value),
         "user_agent": user_agent,
         "snapshot_path": snapshot_path,
         "note": note,
@@ -237,8 +255,8 @@ def add_event(event_type, plate=None, confidence=None, authorized=None,
 
     conn = db()
     conn.execute("""
-        INSERT INTO events (ts, event_type, plate, confidence, authorized, client_ip, user_agent, snapshot_path, note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO events (ts, event_type, plate, confidence, authorized, client_ip, client_name, user_agent, snapshot_path, note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         event_record["ts"],
         event_record["event_type"],
@@ -246,6 +264,7 @@ def add_event(event_type, plate=None, confidence=None, authorized=None,
         event_record["confidence"],
         event_record["authorized"],
         event_record["client_ip"],
+        event_record["client_name"],
         event_record["user_agent"],
         event_record["snapshot_path"],
         event_record["note"]
@@ -948,7 +967,7 @@ def api_open_gate():
         note="Abertura manual via UI web"
     )
 
-    return jsonify({"ok": True, "client_ip": ip, "snapshot": snap})
+    return jsonify({"ok": True, "client_ip": ip, "client_name": client_name(ip), "snapshot": snap})
 
 def _parse_days(value):
     """Aceita lista de inteiros 0..6 (Mon..Sun) ou int bitmask. Retorna bitmask ou None."""
