@@ -58,6 +58,13 @@ DB_PATH  = DATA_DIR / "events.db"
 EVENTS_LOG_PATH = DATA_DIR / "events.log"
 VALIDAS_PATH = Path.home() / "matriculas_validas.txt"
 MAX_EVENTS_HISTORY = 500
+MANUAL_OPEN_DEBOUNCE_SECONDS = 3.0
+
+# Protege o rele e o historico de pedidos duplicados (por exemplo, um retry do
+# browser/proxy). O bloqueio cobre toda a operacao para que dois pedidos em
+# simultaneo nao consigam ambos passar na verificacao.
+manual_open_lock = threading.Lock()
+manual_open_last = {}
 
 # Nomes amigaveis dos postos que usam a interface web.
 # Formato: "192.168.50.223=PC-Portaria,192.168.50.224=PC-Rececao"
@@ -948,26 +955,55 @@ def api_alerts_stream():
 @app.route("/api/open_gate", methods=["POST"])
 @login_required
 def api_open_gate():
-    frame = stream_main.read()
-    if frame is None:
-        frame = stream_sub.read()
-    snap = save_snapshot(frame, "manual") if frame is not None else None
-
     ip = client_ip()
     ua = request.headers.get("User-Agent", "")
+    request_id = request.headers.get("X-Idempotency-Key", "").strip()[:128]
+    client_key = f"client:{ip}|{ua}"
+    action_keys = [client_key]
+    if request_id:
+        action_keys.insert(0, f"request:{request_id}")
 
-    open_gate()
+    with manual_open_lock:
+        now = time.monotonic()
+        for action_key in action_keys:
+            previous = manual_open_last.get(action_key)
+            if previous and now - previous["at"] < MANUAL_OPEN_DEBOUNCE_SECONDS:
+                return jsonify({**previous["response"], "duplicate": True})
 
-    add_event(
-        event_type="manual_open",
-        authorized=True,
-        client_ip_value=ip,
-        user_agent=ua,
-        snapshot_path=snap,
-        note="Abertura manual via UI web"
-    )
+        frame = stream_main.read()
+        if frame is None:
+            frame = stream_sub.read()
+        snap = save_snapshot(frame, "manual") if frame is not None else None
 
-    return jsonify({"ok": True, "client_ip": ip, "client_name": client_name(ip), "snapshot": snap})
+        open_gate()
+
+        add_event(
+            event_type="manual_open",
+            authorized=True,
+            client_ip_value=ip,
+            user_agent=ua,
+            snapshot_path=snap,
+            note="Abertura manual via UI web"
+        )
+
+        response = {
+            "ok": True,
+            "client_ip": ip,
+            "client_name": client_name(ip),
+            "snapshot": snap,
+        }
+        for action_key in action_keys:
+            manual_open_last[action_key] = {"at": now, "response": response}
+
+        # Evita crescimento ilimitado caso a aplicacao fique meses sem reiniciar.
+        expired = [
+            key for key, value in manual_open_last.items()
+            if now - value["at"] >= MANUAL_OPEN_DEBOUNCE_SECONDS
+        ]
+        for key in expired:
+            manual_open_last.pop(key, None)
+
+    return jsonify(response)
 
 def _parse_days(value):
     """Aceita lista de inteiros 0..6 (Mon..Sun) ou int bitmask. Retorna bitmask ou None."""

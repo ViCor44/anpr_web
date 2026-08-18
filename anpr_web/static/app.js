@@ -4,6 +4,13 @@ async function getJSON(url, opts = {}) {
   return r.json();
 }
 
+function manualOpenOptions() {
+  const requestId = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return { method: "POST", headers: { "X-Idempotency-Key": requestId } };
+}
+
 function fmtConfidence(v) {
   if (v === null || v === undefined) return "--";
   return `${Math.round(v * 100)}%`;
@@ -358,7 +365,7 @@ async function openGateFromAlert() {
   button.disabled = true;
   button.textContent = "A abrir...";
   try {
-    const data = await getJSON("/api/open_gate", { method: "POST" });
+    const data = await getJSON("/api/open_gate", manualOpenOptions());
     document.getElementById("manual-result").textContent = `Portao aberto. Origem: ${data.client_name ? `${data.client_name} · ` : ""}${data.client_ip}`;
     dismissDeniedAlert();
   } catch (error) {
@@ -375,7 +382,7 @@ async function openGate() {
   btn.disabled = true;
   btn.textContent = "A abrir...";
   try {
-    const data = await getJSON("/api/open_gate", { method: "POST" });
+    const data = await getJSON("/api/open_gate", manualOpenOptions());
     result.textContent = `Portão aberto. Origem: ${data.client_name ? `${data.client_name} · ` : ""}${data.client_ip}`;
     await refreshEvents();
   } catch (e) {
