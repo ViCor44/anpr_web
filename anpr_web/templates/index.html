@@ -150,7 +150,13 @@
 
   <div id="event-image-viewer" class="image-viewer" hidden role="dialog" aria-modal="true" aria-label="Imagem ampliada do evento">
     <button type="button" id="event-image-close" class="image-viewer-close" aria-label="Fechar imagem">&times;</button>
-    <img id="event-image-large" alt="Imagem ampliada do evento">
+    <label class="image-zoom-control" for="event-image-zoom">
+      Zoom <input id="event-image-zoom" type="range" min="100" max="300" step="10" value="100">
+      <output id="event-image-zoom-value" for="event-image-zoom">100%</output>
+    </label>
+    <div class="image-viewer-stage">
+      <img id="event-image-large" alt="Imagem ampliada do evento">
+    </div>
   </div>
   <script src="/static/app.js"></script>
   {% endif %}

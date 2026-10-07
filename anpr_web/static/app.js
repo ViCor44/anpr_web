@@ -69,10 +69,29 @@ function openEventImage(src) {
   const viewer = document.getElementById("event-image-viewer");
   const image = document.getElementById("event-image-large");
   if (!viewer || !image) return;
+  const zoomControl = document.getElementById("event-image-zoom");
+  if (zoomControl) zoomControl.value = "100";
+  image.onload = updateEventImageZoom;
   image.src = src;
   viewer.hidden = false;
+  updateEventImageZoom();
   document.body.classList.add("modal-open");
   document.getElementById("event-image-close")?.focus();
+}
+
+function updateEventImageZoom() {
+  const image = document.getElementById("event-image-large");
+  const zoomControl = document.getElementById("event-image-zoom");
+  const zoomValue = document.getElementById("event-image-zoom-value");
+  if (!image || !zoomControl || !zoomValue) return;
+  zoomValue.value = `${zoomControl.value}%`;
+  zoomValue.textContent = `${zoomControl.value}%`;
+  if (!image.naturalWidth || !image.naturalHeight) return;
+  const fit = Math.min(
+    (window.innerWidth * 0.95) / image.naturalWidth,
+    (window.innerHeight * 0.78) / image.naturalHeight
+  );
+  image.style.width = `${image.naturalWidth * fit * Number(zoomControl.value) / 100}px`;
 }
 
 function closeEventImage() {
@@ -81,9 +100,12 @@ function closeEventImage() {
   if (!viewer || viewer.hidden) return;
   viewer.hidden = true;
   image.removeAttribute("src");
+  image.style.removeProperty("width");
   document.body.classList.remove("modal-open");
 }
 
+document.getElementById("event-image-zoom")?.addEventListener("input", updateEventImageZoom);
+window.addEventListener("resize", updateEventImageZoom);
 document.getElementById("event-image-close")?.addEventListener("click", closeEventImage);
 document.getElementById("event-image-viewer")?.addEventListener("click", (event) => {
   if (event.target.id === "event-image-viewer") closeEventImage();

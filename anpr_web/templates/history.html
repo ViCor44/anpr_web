@@ -28,11 +28,15 @@
     </div>
   </main>
 
-  <!-- Lightbox simples -->
-  <div id="lightbox" onclick="this.style.display='none'"
-       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
-              z-index:9999;align-items:center;justify-content:center;cursor:zoom-out">
-    <img id="lightbox-img" style="max-width:95vw;max-height:95vh;border-radius:8px">
+  <div id="lightbox" class="image-viewer" hidden role="dialog" aria-modal="true" aria-label="Imagem ampliada do evento">
+    <button type="button" id="lightbox-close" class="image-viewer-close" aria-label="Fechar imagem">&times;</button>
+    <label class="image-zoom-control" for="lightbox-zoom">
+      Zoom <input id="lightbox-zoom" type="range" min="100" max="300" step="10" value="100">
+      <output id="lightbox-zoom-value" for="lightbox-zoom">100%</output>
+    </label>
+    <div class="image-viewer-stage">
+      <img id="lightbox-img" alt="Imagem ampliada do evento">
+    </div>
   </div>
 
   <script>
@@ -50,10 +54,45 @@
       if(ev.authorized===0) return "bad";
       return "";
     }
-    function openLightbox(src){
-      document.getElementById("lightbox-img").src = src;
-      document.getElementById("lightbox").style.display = "flex";
+    const lightbox = document.getElementById("lightbox");
+    const lightboxImage = document.getElementById("lightbox-img");
+    const lightboxZoom = document.getElementById("lightbox-zoom");
+    const lightboxZoomValue = document.getElementById("lightbox-zoom-value");
+
+    function updateLightboxZoom(){
+      const zoom = Number(lightboxZoom.value) / 100;
+      lightboxZoomValue.value = `${lightboxZoom.value}%`;
+      lightboxZoomValue.textContent = `${lightboxZoom.value}%`;
+      if (!lightboxImage.naturalWidth || !lightboxImage.naturalHeight) return;
+      const fit = Math.min(
+        (window.innerWidth * 0.95) / lightboxImage.naturalWidth,
+        (window.innerHeight * 0.78) / lightboxImage.naturalHeight
+      );
+      lightboxImage.style.width = `${lightboxImage.naturalWidth * fit * zoom}px`;
     }
+
+    function closeLightbox(){
+      lightbox.hidden = true;
+      lightboxImage.removeAttribute("src");
+      lightboxImage.style.removeProperty("width");
+    }
+
+    function openLightbox(src){
+      lightboxZoom.value = "100";
+      lightboxImage.src = src;
+      lightbox.hidden = false;
+      updateLightboxZoom();
+    }
+    lightboxZoom.addEventListener("input", updateLightboxZoom);
+    lightboxImage.addEventListener("load", updateLightboxZoom);
+    document.getElementById("lightbox-close").addEventListener("click", closeLightbox);
+    lightbox.addEventListener("click", (event) => {
+      if (event.target === lightbox) closeLightbox();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeLightbox();
+    });
+    window.addEventListener("resize", updateLightboxZoom);
 
     async function load(){
       const r = await fetch("/api/events/all?limit=500");
@@ -65,7 +104,9 @@
         const row = document.createElement("div");
         row.className = "event";
         const img = ev.snapshot_path
-          ? `<img src="/${ev.snapshot_path}" alt="snapshot" style="cursor:zoom-in" onclick="openLightbox('/${ev.snapshot_path}')">`
+          ? `<button type="button" class="event-snapshot" aria-label="Ampliar imagem do evento">
+               <img src="/${ev.snapshot_path}" alt="Imagem do evento">
+             </button>`
           : `<div style="width:96px;height:72px;background:#000;border-radius:8px"></div>`;
         row.innerHTML = `
           ${img}
@@ -78,6 +119,9 @@
             ${ev.note ? `<div class="muted">${ev.note}</div>` : ""}
           </div>
         `;
+        row.querySelector(".event-snapshot")?.addEventListener("click", () => {
+          openLightbox(`/${ev.snapshot_path}`);
+        });
         el.appendChild(row);
       }
     }
