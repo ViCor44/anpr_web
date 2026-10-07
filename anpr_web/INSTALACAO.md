@@ -1364,7 +1364,7 @@ No topo do `app.py`:
 
 ## 16. Endpoints da API
 
-Ao clicar na imagem em direto do dashboard, é guardado um snapshot da câmara selecionada e criado um evento visível no histórico.
+Ao clicar na imagem em direto do dashboard, é guardado um snapshot da câmara selecionada e criado um evento visível no histórico. Para a Câmara 1, o snapshot usa o stream principal, de maior resolução, independentemente do stream secundário usado na pré-visualização.
 
 | Método | URL | Função |
 |--------|-----|--------|

@@ -84,6 +84,15 @@
       updateLightboxZoom();
     }
     lightboxZoom.addEventListener("input", updateLightboxZoom);
+    lightbox.addEventListener("wheel", (event) => {
+      if (lightbox.hidden) return;
+      event.preventDefault();
+      const step = Number(lightboxZoom.step) || 10;
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const zoom = Number(lightboxZoom.value) + direction * step;
+      lightboxZoom.value = String(Math.max(Number(lightboxZoom.min), Math.min(Number(lightboxZoom.max), zoom)));
+      updateLightboxZoom();
+    }, { passive: false });
     lightboxImage.addEventListener("load", updateLightboxZoom);
     document.getElementById("lightbox-close").addEventListener("click", closeLightbox);
     lightbox.addEventListener("click", (event) => {

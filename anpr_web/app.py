@@ -900,7 +900,7 @@ def api_snapshot():
     if camera_id not in ("1", "2"):
         return jsonify({"error": "Camara invalida"}), 400
 
-    source = stream_sub if camera_id == "1" else stream_camera2
+    source = stream_main if camera_id == "1" else stream_camera2
     if source is None:
         return jsonify({"error": "Segunda camera nao configurada"}), 404
 

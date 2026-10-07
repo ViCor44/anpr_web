@@ -105,6 +105,17 @@ function closeEventImage() {
 }
 
 document.getElementById("event-image-zoom")?.addEventListener("input", updateEventImageZoom);
+document.getElementById("event-image-viewer")?.addEventListener("wheel", (event) => {
+  const viewer = document.getElementById("event-image-viewer");
+  const zoomControl = document.getElementById("event-image-zoom");
+  if (!viewer || viewer.hidden || !zoomControl) return;
+  event.preventDefault();
+  const step = Number(zoomControl.step) || 10;
+  const direction = event.deltaY < 0 ? 1 : -1;
+  const zoom = Number(zoomControl.value) + direction * step;
+  zoomControl.value = String(Math.max(Number(zoomControl.min), Math.min(Number(zoomControl.max), zoom)));
+  updateEventImageZoom();
+}, { passive: false });
 window.addEventListener("resize", updateEventImageZoom);
 document.getElementById("event-image-close")?.addEventListener("click", closeEventImage);
 document.getElementById("event-image-viewer")?.addEventListener("click", (event) => {
