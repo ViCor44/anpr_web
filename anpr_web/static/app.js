@@ -20,6 +20,7 @@ function eventTitle(ev) {
   if (ev.event_type === "manual_open") return "Abertura manual";
   if (ev.event_type === "anpr_authorized") return "ANPR autorizado";
   if (ev.event_type === "anpr_denied") return "ANPR negado";
+  if (ev.event_type === "camera_snapshot") return "Snapshot da câmara";
   if (ev.event_type === "plate_added") return "Matricula adicionada";
   if (ev.event_type === "plate_removed") return "Matricula removida";
   return ev.event_type;
@@ -129,6 +130,9 @@ function selectCamera(button) {
     feed.src = `${button.dataset.feed}?view=${Date.now()}`;
     feed.dataset.camera = selectedCamera;
     feed.alt = `Imagem em direto da Camara ${selectedCamera}`;
+    feed.setAttribute("aria-label", `Guardar snapshot da Camara ${selectedCamera}`);
+    document.getElementById("snapshot-result").textContent =
+      "Clique na imagem para guardar um snapshot.";
   }
   updateCameraLabel();
 }
@@ -154,6 +158,48 @@ function setupCameras(cameras) {
 
 document.querySelectorAll(".camera-thumb").forEach((button) => {
   button.addEventListener("click", () => selectCamera(button));
+});
+
+let snapshotInProgress = false;
+
+async function takeSnapshot() {
+  const feed = document.getElementById("live-feed");
+  const result = document.getElementById("snapshot-result");
+  if (snapshotInProgress || feed.hidden) return;
+
+  const cameraId = selectedCamera;
+  snapshotInProgress = true;
+  feed.setAttribute("aria-busy", "true");
+  result.textContent = `A guardar snapshot da Camara ${cameraId}...`;
+  try {
+    const response = await fetch("/api/snapshot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ camera_id: cameraId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+    result.textContent = `Snapshot da Camara ${cameraId} guardado.`;
+    try {
+      await refreshEvents();
+    } catch (error) {
+      result.textContent += ` Erro ao atualizar eventos: ${error.message}`;
+    }
+  } catch (error) {
+    result.textContent = `Erro ao guardar snapshot: ${error.message}`;
+  } finally {
+    snapshotInProgress = false;
+    feed.removeAttribute("aria-busy");
+  }
+}
+
+document.getElementById("live-feed")?.addEventListener("click", takeSnapshot);
+document.getElementById("live-feed")?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    takeSnapshot();
+  }
 });
 
 async function refreshEvents() {

@@ -521,10 +521,11 @@ valid_plates = load_valid_plates()
 
 
 def save_snapshot(frame, prefix="event"):
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filename = f"{prefix}_{ts}.jpg"
     path = SNAP_DIR / filename
-    cv2.imwrite(str(path), frame)
+    if not cv2.imwrite(str(path), frame):
+        raise OSError(f"Nao foi possivel gravar o snapshot em {path}")
     return f"data/snapshots/{filename}"
 
 
@@ -886,6 +887,42 @@ def video_feed_2():
     if stream_camera2 is None:
         return "Segunda camera nao configurada", 404
     return Response(mjpeg_generator(stream_camera2), mimetype="multipart/x-mixed-replace; boundary=frame")
+
+
+@app.route("/api/snapshot", methods=["POST"])
+@login_required
+def api_snapshot():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Pedido JSON invalido"}), 400
+
+    camera_id = str(data.get("camera_id", ""))
+    if camera_id not in ("1", "2"):
+        return jsonify({"error": "Camara invalida"}), 400
+
+    source = stream_sub if camera_id == "1" else stream_camera2
+    if source is None:
+        return jsonify({"error": "Segunda camera nao configurada"}), 404
+
+    frame = source.read()
+    if frame is None:
+        return jsonify({"error": f"Sem imagem disponivel na Camara {camera_id}"}), 503
+
+    try:
+        snapshot_path = save_snapshot(frame, f"camera{camera_id}")
+    except OSError as error:
+        print(f"[snapshot] erro ao gravar: {error}")
+        return jsonify({"error": "Nao foi possivel gravar o snapshot"}), 500
+
+    ip = client_ip()
+    add_event(
+        event_type="camera_snapshot",
+        client_ip_value=ip,
+        user_agent=request.headers.get("User-Agent", ""),
+        snapshot_path=snapshot_path,
+        note=f"Snapshot manual da Camara {camera_id}",
+    )
+    return jsonify({"ok": True, "snapshot": snapshot_path})
 
 
 @app.route("/api/status")

@@ -1364,6 +1364,8 @@ No topo do `app.py`:
 
 ## 16. Endpoints da API
 
+Ao clicar na imagem em direto do dashboard, é guardado um snapshot da câmara selecionada e criado um evento visível no histórico.
+
 | Método | URL | Função |
 |--------|-----|--------|
 | GET  | `/` | Dashboard |
@@ -1373,6 +1375,7 @@ No topo do `app.py`:
 | GET  | `/api/status` | Estado atual + última leitura |
 | GET  | `/api/events?limit=N` | Lista eventos |
 | GET  | `/api/events/all?limit=N` | Lista eventos (histórico) |
+| POST | `/api/snapshot` | Guarda snapshot da câmara selecionada e regista evento |
 | POST | `/api/open_gate` | Abre portão manualmente |
 | GET  | `/api/plates` | Lista matrículas autorizadas |
 | POST | `/api/plates` | Adiciona matrícula |

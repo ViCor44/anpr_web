@@ -39,6 +39,7 @@
     function fmtConfidence(v){ return v==null ? "--" : `${Math.round(v*100)}%`; }
     function eventTitle(ev){
       if(ev.event_type==="manual_open") return "Abertura manual";
+      if(ev.event_type==="camera_snapshot") return "Snapshot da câmara";
       if(ev.event_type==="anpr_authorized") return "ANPR autorizado";
       if(ev.event_type==="anpr_denied") return "ANPR negado";
       return ev.event_type;

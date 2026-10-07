@@ -37,11 +37,16 @@
           <span class="badge" id="live-badge">online</span>
         </div>
         <div class="live-view">
-          <img id="live-feed" data-camera="1" src="/video_feed" alt="Imagem em direto da Camara 1">
+          <img id="live-feed" data-camera="1" src="/video_feed" alt="Imagem em direto da Camara 1"
+               role="button" tabindex="0" title="Clique para guardar um snapshot"
+               aria-label="Guardar snapshot da Camara 1">
           <div class="live-unavailable" id="live-unavailable" hidden>
             <strong>Camara 2 por configurar</strong>
             <span>Adicione os dados RTSP no servidor para ativar este stream.</span>
           </div>
+        </div>
+        <div class="muted snapshot-hint" id="snapshot-result" aria-live="polite">
+          Clique na imagem para guardar um snapshot.
         </div>
         <div class="camera-picker" aria-label="Selecionar camara">
           <button type="button" class="camera-thumb active" data-camera="1" data-feed="/video_feed" data-configured="true" aria-pressed="true">
