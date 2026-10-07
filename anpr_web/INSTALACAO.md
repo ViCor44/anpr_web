@@ -1355,6 +1355,7 @@ No topo do `app.py`:
 | `CAM_IP / USER / PASS` | Câmara IP | — |
 | `RELE_PIN` | Pino BCM do relé | `17` |
 | `TEMPO_RELE_SEG` | Quanto tempo aciona o relé | `2.0` |
+| `RELE_COOLDOWN_S` | Intervalo mínimo entre acionamentos automáticos do relé por ANPR | `10` |
 | `ANPR_MIN_CONF_SAVE` | Confiança mínima para guardar/abrir | `0.95` |
 | `ANPR_COOLDOWN_S` | Anti-repetição da mesma matrícula | `10` |
 | `DETECTAR_CADA_N` | Processa 1 em cada N frames | `5` |
