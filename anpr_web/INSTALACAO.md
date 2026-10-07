@@ -1366,6 +1366,8 @@ No topo do `app.py`:
 
 Ao clicar na imagem em direto do dashboard, é guardado um snapshot da câmara selecionada e criado um evento visível no histórico. Para a Câmara 1, o snapshot usa o stream principal, de maior resolução, independentemente do stream secundário usado na pré-visualização.
 
+No histórico e nos eventos recentes, clique num snapshot para o ampliar. Ajuste o zoom com o regulador ou a roda do rato; quando a imagem ultrapassar a área visível, mantenha o botão esquerdo do rato premido sobre a imagem e arraste para explorar os detalhes.
+
 | Método | URL | Função |
 |--------|-----|--------|
 | GET  | `/` | Dashboard |
