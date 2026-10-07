@@ -1357,7 +1357,7 @@ No topo do `app.py`:
 | `TEMPO_RELE_SEG` | Quanto tempo aciona o relé | `2.0` |
 | `RELE_COOLDOWN_S` | Intervalo mínimo entre acionamentos automáticos do relé por ANPR | `10` |
 | `ANPR_MIN_CONF_SAVE` | Confiança mínima para guardar/abrir | `0.95` |
-| `ANPR_COOLDOWN_S` | Anti-repetição da mesma matrícula | `10` |
+| `ANPR_PLATE_RECHECK_S` | Intervalo mínimo entre eventos ANPR da mesma matrícula | `120` (2 minutos) |
 | `DETECTAR_CADA_N` | Processa 1 em cada N frames | `5` |
 | `APP_PORT` | Porta do servidor web | `8080` |
 
